@@ -5,20 +5,20 @@ the right edge of the screen. A Linux answer to the macOS menu-bar usage
 trackers, built for GNOME on Wayland.
 
 ```
-panel:  ◔ 88%                 ← mini dial + lowest percent left across providers
+panel:  ◔ 68%                 ← mini dial + highest percent used across providers
 
 notch:  ╭──────╮
-        │ (✱)  │  two rings per provider: outer = session window,
-        │ 88%  │  inner = weekly. Both drain clockwise from full.
-        │wk 63%│
-        │ (◎)  │  hover → a callout slides out with a bar per window,
-        │ 41%  │  percent left, and "resets in 2h 14m · 17:10" for each,
-        │wk 79%│  including scoped caps like Claude's model-specific weekly.
+        │ (✱)  │  two rings per provider: outer = current session,
+        │ 68%  │  inner = weekly. Both fill clockwise as you use them.
+        │wk 47%│
+        │ (◎)  │  hover → a callout laid out like claude.ai's usage panel:
+        │ 21%  │  "Current session · Resets in 59 min", a bar, "68% used";
+        │wk 12%│  then "Weekly limits": All models, Fable, any other scoped cap.
         ╰──────╯
 ```
 
-Green under 75% used, amber to 90%, red past it. Click the notch or the panel
-item for the full popup.
+Everything is percent **used**, the way claude.ai reports it. Green under 70%,
+yellow from 70%, red from 90%. Click the notch or the panel item for the popup.
 
 The extension makes no network calls and never touches your credentials. It
 reads JSON over localhost from a [CodexBar](https://github.com/steipete/CodexBar)
@@ -89,7 +89,7 @@ At the top of `extension.js`:
 | `PANEL_RING_SIZE` | `14` | Mini dial in the top bar, px |
 | `BAR_WIDTH` | `120` | Bars in the hover callout; the popup uses this + 40 |
 
-Thresholds live in `tone()`: amber at 75% used, red at 90%. The three colours
+Thresholds are `WARN_AT = 70` and `CRITICAL_AT = 90` (percent used). The three colours
 are defined once in `TONE` (extension.js, for the Cairo rings) and once in
 `stylesheet.css` (for text and bars); change both. Re-run
 `./install.sh` after editing, then log out and back in.

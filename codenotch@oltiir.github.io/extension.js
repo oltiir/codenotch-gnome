@@ -20,12 +20,16 @@ const RING_SIZE = 46;        // px, the dial in the notch
 const PANEL_RING_SIZE = 14;  // px, the mini dial in the top bar
 const BAR_WIDTH = 120;       // px, bars in the hover callout and the popup
 
+// Percent *used* at which the colour turns. Mirrors claude.ai's usage panel.
+const WARN_AT = 70;
+const CRITICAL_AT = 90;
+
 const PROVIDERS = {
-    claude:  {name: 'Claude',  glyph: '✱'},   // ✱
-    codex:   {name: 'Codex',   glyph: '◎'},   // ◎
-    cursor:  {name: 'Cursor',  glyph: '△'},   // △
-    copilot: {name: 'Copilot', glyph: '⌘'},   // ⌘
-    gemini:  {name: 'Gemini',  glyph: '✦'},   // ✦
+    claude:  {name: 'Claude',  glyph: '✱'},
+    codex:   {name: 'Codex',   glyph: '◎'},
+    cursor:  {name: 'Cursor',  glyph: '△'},
+    copilot: {name: 'Copilot', glyph: '⌘'},
+    gemini:  {name: 'Gemini',  glyph: '✦'},
 };
 
 // Usage-state colours, shared by CSS classes below and the Cairo rings.
@@ -59,34 +63,38 @@ function clampPct(n) {
     return Math.max(0, Math.min(100, Math.round(n)));
 }
 
-// Every rate window CodexBar knows about for one provider, in display order:
-// the session window, the weekly window, then any extra scoped windows such
-// as Claude's model-specific weekly cap. Each gets a key so the notch can pick
-// out session/weekly for its two rings.
+// Every rate window CodexBar knows about for one provider, in display order
+// and named the way claude.ai names them: the session window, then the weekly
+// windows -- the all-models cap and any scoped ones such as a per-model cap.
+// `group` lets the detail view put a "Weekly limits" divider before the
+// weekly rows; `key` lets the notch pick out session/weekly for its rings.
 function windowsFrom(entry) {
     const usage = entry?.usage ?? {};
     const out = [];
-    const push = (key, label, w) => {
+    const push = (key, group, label, w) => {
         if (w && typeof w.usedPercent === 'number')
-            out.push({key, label, used: clampPct(w.usedPercent), resetsAt: w.resetsAt ?? null});
+            out.push({key, group, label, used: clampPct(w.usedPercent), resetsAt: w.resetsAt ?? null});
     };
-    push('session', 'Session', usage.primary);
-    push('weekly', 'Weekly', usage.secondary);
-    push('tertiary', 'Model', usage.tertiary);
-    for (const extra of usage.extraRateWindows ?? [])
-        push(extra.id ?? 'extra', extra.title ?? 'Scoped', extra.window);
+    push('session', 'session', 'Current session', usage.primary);
+    push('weekly', 'weekly', 'All models', usage.secondary);
+    push('tertiary', 'weekly', 'Model', usage.tertiary);
+    for (const extra of usage.extraRateWindows ?? []) {
+        // CodexBar titles these "Fable only"; claude.ai just says "Fable".
+        const label = (extra.title ?? 'Scoped').replace(/\s+only$/i, '');
+        push(extra.id ?? 'extra', 'weekly', label, extra.window);
+    }
     return out;
 }
 
 function tone(used) {
-    if (used >= 90)
+    if (used >= CRITICAL_AT)
         return TONE.critical;
-    if (used >= 75)
+    if (used >= WARN_AT)
         return TONE.warn;
     return TONE.ok;
 }
 
-// "2h 14m", "1d 6h", "38m", "resetting"
+// "59 min", "13 hr 49 min", "2 days 3 hr" -- claude.ai's phrasing.
 function countdown(iso) {
     if (!iso)
         return '';
@@ -94,15 +102,16 @@ function countdown(iso) {
     if (!Number.isFinite(ms))
         return '';
     if (ms <= 0)
-        return 'resetting';
+        return 'now';
     const mins = Math.round(ms / 60000);
     if (mins < 60)
-        return `${mins}m`;
+        return `${mins} min`;
     const hours = Math.floor(mins / 60);
     if (hours < 24)
-        return `${hours}h ${mins % 60}m`;
+        return mins % 60 ? `${hours} hr ${mins % 60} min` : `${hours} hr`;
     const days = Math.floor(hours / 24);
-    return `${days}d ${hours % 24}h`;
+    const rem = hours % 24;
+    return `${days} ${days === 1 ? 'day' : 'days'}${rem ? ` ${rem} hr` : ''}`;
 }
 
 // "17:10" for today, "Tue 06:00" otherwise.
@@ -120,31 +129,31 @@ function resetLine(iso) {
     const cd = countdown(iso);
     if (!cd)
         return '';
-    if (cd === 'resetting')
-        return cd;
+    if (cd === 'now')
+        return 'Resetting';
     const clock = clockText(iso);
-    return clock ? `resets in ${cd}  ·  ${clock}` : `resets in ${cd}`;
+    return clock ? `Resets in ${cd}  ·  ${clock}` : `Resets in ${cd}`;
 }
 
 // ---- widgets ---------------------------------------------------------------
 
 // Concentric dials: the outer ring is the session window, the inner one the
-// weekly window. Both drain clockwise from full, so a full ring means nothing
-// used, and the colour tracks the session window's severity.
+// weekly window. Both fill clockwise as you use them -- an empty ring means
+// nothing used -- and the colour tracks the session window's severity.
 const Rings = GObject.registerClass(
 class Rings extends St.DrawingArea {
     _init(size) {
         super._init({width: size, height: size, style_class: 'cn-rings'});
-        this._session = null;   // fraction left, 0..1, or null for no data
+        this._session = null;   // fraction used, 0..1, or null for no data
         this._weekly = null;
         this._tone = TONE.stale;
         this.connect('repaint', () => this._paint());
     }
 
-    setWindows(session, weekly) {
-        this._session = session === null ? null : (100 - session) / 100;
-        this._weekly = weekly === null ? null : (100 - weekly) / 100;
-        this._tone = session === null ? TONE.stale : tone(session);
+    setWindows(sessionUsed, weeklyUsed) {
+        this._session = sessionUsed === null ? null : sessionUsed / 100;
+        this._weekly = weeklyUsed === null ? null : weeklyUsed / 100;
+        this._tone = sessionUsed === null ? TONE.stale : tone(sessionUsed);
         this.queue_repaint();
     }
 
@@ -201,6 +210,7 @@ class Dial extends St.Widget {
     }
 });
 
+// A bar that fills left-to-right with percent used.
 const UsageBar = GObject.registerClass(
 class UsageBar extends St.Bin {
     _init(width) {
@@ -219,15 +229,16 @@ class UsageBar extends St.Bin {
     }
 
     setUsed(used) {
-        const left = 100 - used;
-        const px = Math.max(3, Math.round((this._width * left) / 100));
+        const px = used <= 0 ? 0 : Math.max(3, Math.round((this._width * used) / 100));
         this._fill.style = `width: ${px}px;`;
         this._fill.style_class = `cn-bar-fill ${tone(used).cls}`;
     }
 });
 
-// One provider's block in the hover callout and the popup: name, then a row
-// per window with a bar, percent left, and the reset countdown.
+// One provider's block, laid out like claude.ai's usage panel: the window
+// name with its reset time stacked underneath on the left, a bar in the
+// middle, "NN% used" on the right, and a "Weekly limits" divider before the
+// weekly rows.
 function buildDetail(provider, windows, opts = {}) {
     const box = new St.BoxLayout({vertical: true, style_class: 'cn-detail'});
 
@@ -236,26 +247,32 @@ function buildDetail(provider, windows, opts = {}) {
     head.add_child(new St.Label({text: provider.name, style_class: 'cn-detail-name'}));
     box.add_child(head);
 
+    let dividerDone = false;
     for (const w of windows) {
+        if (w.group === 'weekly' && !dividerDone) {
+            box.add_child(new St.Label({text: 'Weekly limits', style_class: 'cn-detail-group'}));
+            dividerDone = true;
+        }
+
         const row = new St.BoxLayout({style_class: 'cn-detail-row'});
-        row.add_child(new St.Label({
-            text: w.label,
-            style_class: 'cn-detail-label',
-            y_align: Clutter.ActorAlign.CENTER,
-        }));
+
+        const left = new St.BoxLayout({vertical: true, style_class: 'cn-detail-left'});
+        left.add_child(new St.Label({text: w.label, style_class: 'cn-detail-label'}));
+        const reset = resetLine(w.resetsAt);
+        if (reset)
+            left.add_child(new St.Label({text: reset, style_class: 'cn-detail-reset'}));
+        row.add_child(left);
+
         const bar = new UsageBar(opts.barWidth ?? BAR_WIDTH);
         bar.setUsed(w.used);
         row.add_child(bar);
+
         row.add_child(new St.Label({
-            text: `${100 - w.used}%`,
+            text: `${w.used}% used`,
             style_class: `cn-detail-pct ${tone(w.used).cls}`,
             y_align: Clutter.ActorAlign.CENTER,
         }));
         box.add_child(row);
-
-        const reset = resetLine(w.resetsAt);
-        if (reset)
-            box.add_child(new St.Label({text: reset, style_class: 'cn-detail-reset'}));
     }
     return box;
 }
@@ -265,7 +282,7 @@ class Indicator extends PanelMenu.Button {
     _init() {
         super._init(0.0, 'Codenotch', false);
 
-        // Top bar: a mini dial and the worst percent-left across providers.
+        // Top bar: a mini dial and the highest percent used across providers.
         const panelBox = new St.BoxLayout({style_class: 'cn-panel'});
         this._panelRings = new Rings(PANEL_RING_SIZE);
         this._panelRings.y_align = Clutter.ActorAlign.CENTER;
@@ -289,7 +306,6 @@ class Indicator extends PanelMenu.Button {
         this._dials = null;
         this._callout = null;
         this._placeId = 0;
-        this._entries = [];
 
         if (SHOW_EDGE_NOTCH)
             this._buildNotch();
@@ -473,7 +489,7 @@ class Indicator extends PanelMenu.Button {
             const detail = buildDetail(provider, windows, {barWidth: BAR_WIDTH + 40});
             const pace = entry.pace?.primary?.summary;
             if (pace)
-                detail.add_child(new St.Label({text: pace, style_class: 'cn-detail-reset'}));
+                detail.add_child(new St.Label({text: pace, style_class: 'cn-detail-pace'}));
             item.add_child(detail);
             this._section.addMenuItem(item);
 
@@ -484,13 +500,13 @@ class Indicator extends PanelMenu.Button {
                 dial.rings.setWindows(session.used, weekly ? weekly.used : null);
                 cell.add_child(dial);
                 cell.add_child(new St.Label({
-                    text: `${100 - session.used}%`,
+                    text: `${session.used}%`,
                     style_class: `cn-cell-pct ${tone(session.used).cls}`,
                     x_align: Clutter.ActorAlign.CENTER,
                 }));
                 if (weekly) {
                     cell.add_child(new St.Label({
-                        text: `wk ${100 - weekly.used}%`,
+                        text: `wk ${weekly.used}%`,
                         style_class: 'cn-cell-sub',
                         x_align: Clutter.ActorAlign.CENTER,
                     }));
@@ -504,7 +520,7 @@ class Indicator extends PanelMenu.Button {
         }
 
         if (worst) {
-            this._label.text = `${100 - worst.used}%`;
+            this._label.text = `${worst.used}%`;
             this._label.style_class = `cn-panel-label ${tone(worst.used).cls}`;
             this._panelRings.setWindows(worst.used, worst.weekly);
         } else {
