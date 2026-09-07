@@ -1,88 +1,131 @@
-/* Colours are deliberately few: the shell theme owns the surface, and the only
-   colour this extension introduces is the usage state. */
+/* The only colour this extension introduces is usage state; the rings are
+   painted with the same three tones in extension.js (TONE). */
+
+.cn-ok       { color: #57e389; }
+.cn-warn     { color: #f8e45c; }
+.cn-critical { color: #ff7b63; }
+.cn-stale    { color: #9a9996; }
+
+/* top bar ------------------------------------------------------------------ */
+
+.cn-panel {
+    spacing: 5px;
+    padding: 0 4px;
+}
 
 .cn-panel-label {
     font-feature-settings: "tnum";
     font-size: 0.9em;
-    padding: 0 4px;
+    font-weight: 600;
 }
 
-.cn-ok { color: #8ff0a4; }
-.cn-warn { color: #f8e45c; }
-.cn-critical { color: #ff7b63; }
-.cn-stale { color: #9a9996; }
-
-/* popup ------------------------------------------------------------------- */
-
-.cn-provider {
-    font-weight: 700;
-    padding-bottom: 4px;
-}
-
-.cn-row {
-    spacing: 8px;
-    padding: 2px 0;
-}
-
-.cn-window {
-    min-width: 56px;
-    color: #c0bfbc;
-}
-
-.cn-pct {
-    min-width: 64px;
-    text-align: right;
-    font-feature-settings: "tnum";
-}
-
-.cn-reset {
-    color: #9a9996;
-    font-size: 0.85em;
-    padding: 0 0 6px 56px;
-}
-
-.cn-bar-track {
-    width: 168px;
-    height: 6px;
-    border-radius: 3px;
-    background-color: rgba(255, 255, 255, 0.15);
-}
-
-.cn-bar-fill {
-    height: 6px;
-    border-radius: 3px;
-}
-
-.cn-bar-fill.cn-ok { background-color: #8ff0a4; }
-.cn-bar-fill.cn-warn { background-color: #f8e45c; }
-.cn-bar-fill.cn-critical { background-color: #ff7b63; }
-
-/* edge notch -------------------------------------------------------------- */
+/* edge notch --------------------------------------------------------------- */
 
 .cn-notch {
-    background-color: rgba(0, 0, 0, 0.82);
-    border-radius: 12px 0 0 12px;
-    padding: 8px 4px 8px 6px;
+    background-color: rgba(12, 12, 14, 0.90);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-right-width: 0;
+    border-radius: 18px 0 0 18px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
     transition-duration: 150ms;
 }
 
-.cn-notch:hover,
 .cn-notch-open {
-    padding: 10px 10px 10px 12px;
-    background-color: rgba(0, 0, 0, 0.94);
+    background-color: rgba(12, 12, 14, 0.96);
 }
 
-.cn-notch-cell {
-    padding: 3px 0;
+.cn-dials {
+    padding: 12px 8px 10px 9px;
+    spacing: 12px;
 }
 
-.cn-notch-pct {
-    font-size: 0.95em;
+.cn-cell {
+    spacing: 3px;
+}
+
+.cn-glyph {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.cn-cell-pct {
+    font-size: 0.85em;
     font-weight: 700;
     font-feature-settings: "tnum";
 }
 
-.cn-notch-name {
-    font-size: 0.65em;
+.cn-cell-sub,
+.cn-cell-name {
+    font-size: 0.62em;
     color: #9a9996;
+    font-feature-settings: "tnum";
 }
+
+/* hover callout: slides out to the left of the dials */
+
+.cn-callout {
+    padding: 12px 6px 10px 16px;
+    spacing: 12px;
+    border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.cn-detail {
+    spacing: 3px;
+}
+
+.cn-detail-head {
+    spacing: 6px;
+    padding-bottom: 3px;
+}
+
+.cn-detail-glyph {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.cn-detail-name {
+    font-weight: 700;
+    font-size: 0.95em;
+}
+
+.cn-detail-row {
+    spacing: 8px;
+}
+
+.cn-detail-label {
+    min-width: 62px;
+    font-size: 0.8em;
+    color: #c0bfbc;
+}
+
+.cn-detail-pct {
+    min-width: 34px;
+    text-align: right;
+    font-size: 0.8em;
+    font-weight: 700;
+    font-feature-settings: "tnum";
+}
+
+.cn-detail-reset {
+    font-size: 0.72em;
+    color: #9a9996;
+    padding: 0 0 4px 70px;
+    font-feature-settings: "tnum";
+}
+
+/* bars (callout and popup) */
+
+.cn-bar-track {
+    height: 5px;
+    border-radius: 3px;
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.cn-bar-fill {
+    height: 5px;
+    border-radius: 3px;
+}
+
+.cn-bar-fill.cn-ok       { background-color: #57e389; }
+.cn-bar-fill.cn-warn     { background-color: #f8e45c; }
+.cn-bar-fill.cn-critical { background-color: #ff7b63; }

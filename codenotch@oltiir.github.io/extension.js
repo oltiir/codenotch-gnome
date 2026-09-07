@@ -4,6 +4,7 @@ import Gio from 'gi://Gio';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import Soup from 'gi://Soup?version=3.0';
+import Cairo from 'cairo';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
@@ -15,21 +16,26 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 const ENDPOINT = 'http://127.0.0.1:8787/usage';
 const POLL_SECONDS = 30;
 const SHOW_EDGE_NOTCH = true;
-const BAR_WIDTH = 168; // px; must match .cn-bar-track width in stylesheet.css
+const RING_SIZE = 46;        // px, the dial in the notch
+const PANEL_RING_SIZE = 14;  // px, the mini dial in the top bar
+const BAR_WIDTH = 120;       // px, bars in the hover callout and the popup
 
-const PROVIDER_NAMES = {
-    claude: 'Claude Code',
-    codex: 'Codex',
-    cursor: 'Cursor',
-    copilot: 'Copilot',
-    gemini: 'Gemini',
+const PROVIDERS = {
+    claude:  {name: 'Claude',  glyph: '✱'},   // ✱
+    codex:   {name: 'Codex',   glyph: '◎'},   // ◎
+    cursor:  {name: 'Cursor',  glyph: '△'},   // △
+    copilot: {name: 'Copilot', glyph: '⌘'},   // ⌘
+    gemini:  {name: 'Gemini',  glyph: '✦'},   // ✦
 };
 
-const WINDOW_LABELS = [
-    ['primary', 'Session'],
-    ['secondary', 'Weekly'],
-    ['tertiary', 'Model'],
-];
+// Usage-state colours, shared by CSS classes below and the Cairo rings.
+const TONE = {
+    ok:       {cls: 'cn-ok',       rgb: [0.34, 0.89, 0.54]},   // #57e389
+    warn:     {cls: 'cn-warn',     rgb: [0.97, 0.89, 0.36]},   // #f8e45c
+    critical: {cls: 'cn-critical', rgb: [1.00, 0.48, 0.39]},   // #ff7b63
+    stale:    {cls: 'cn-stale',    rgb: [0.60, 0.60, 0.59]},   // #9a9996
+};
+const TRACK_RGBA = [1, 1, 1, 0.12];
 
 // ---- parsing ---------------------------------------------------------------
 
@@ -49,31 +55,39 @@ function providersFrom(json) {
     return [];
 }
 
+function clampPct(n) {
+    return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+// Every rate window CodexBar knows about for one provider, in display order:
+// the session window, the weekly window, then any extra scoped windows such
+// as Claude's model-specific weekly cap. Each gets a key so the notch can pick
+// out session/weekly for its two rings.
 function windowsFrom(entry) {
     const usage = entry?.usage ?? {};
     const out = [];
-    for (const [key, label] of WINDOW_LABELS) {
-        const w = usage[key];
-        if (!w || typeof w.usedPercent !== 'number')
-            continue;
-        out.push({
-            label,
-            used: Math.max(0, Math.min(100, Math.round(w.usedPercent))),
-            resetsAt: w.resetsAt ?? null,
-        });
-    }
+    const push = (key, label, w) => {
+        if (w && typeof w.usedPercent === 'number')
+            out.push({key, label, used: clampPct(w.usedPercent), resetsAt: w.resetsAt ?? null});
+    };
+    push('session', 'Session', usage.primary);
+    push('weekly', 'Weekly', usage.secondary);
+    push('tertiary', 'Model', usage.tertiary);
+    for (const extra of usage.extraRateWindows ?? [])
+        push(extra.id ?? 'extra', extra.title ?? 'Scoped', extra.window);
     return out;
 }
 
-function severity(used) {
+function tone(used) {
     if (used >= 90)
-        return 'cn-critical';
+        return TONE.critical;
     if (used >= 75)
-        return 'cn-warn';
-    return 'cn-ok';
+        return TONE.warn;
+    return TONE.ok;
 }
 
-function resetText(iso) {
+// "2h 14m", "1d 6h", "38m", "resetting"
+function countdown(iso) {
     if (!iso)
         return '';
     const ms = Date.parse(iso) - Date.now();
@@ -83,23 +97,119 @@ function resetText(iso) {
         return 'resetting';
     const mins = Math.round(ms / 60000);
     if (mins < 60)
-        return `resets in ${mins}m`;
+        return `${mins}m`;
     const hours = Math.floor(mins / 60);
     if (hours < 24)
-        return `resets in ${hours}h ${mins % 60}m`;
-    return `resets in ${Math.round(hours / 24)}d`;
+        return `${hours}h ${mins % 60}m`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ${hours % 24}h`;
+}
+
+// "17:10" for today, "Tue 06:00" otherwise.
+function clockText(iso) {
+    if (!iso)
+        return '';
+    const dt = GLib.DateTime.new_from_iso8601(iso, null)?.to_local();
+    if (!dt)
+        return '';
+    const sameDay = dt.format('%Y-%m-%d') === GLib.DateTime.new_now_local().format('%Y-%m-%d');
+    return dt.format(sameDay ? '%H:%M' : '%a %H:%M');
+}
+
+function resetLine(iso) {
+    const cd = countdown(iso);
+    if (!cd)
+        return '';
+    if (cd === 'resetting')
+        return cd;
+    const clock = clockText(iso);
+    return clock ? `resets in ${cd}  ·  ${clock}` : `resets in ${cd}`;
 }
 
 // ---- widgets ---------------------------------------------------------------
 
-const UsageBar = GObject.registerClass(
-class UsageBar extends St.Bin {
-    _init() {
+// Concentric dials: the outer ring is the session window, the inner one the
+// weekly window. Both drain clockwise from full, so a full ring means nothing
+// used, and the colour tracks the session window's severity.
+const Rings = GObject.registerClass(
+class Rings extends St.DrawingArea {
+    _init(size) {
+        super._init({width: size, height: size, style_class: 'cn-rings'});
+        this._session = null;   // fraction left, 0..1, or null for no data
+        this._weekly = null;
+        this._tone = TONE.stale;
+        this.connect('repaint', () => this._paint());
+    }
+
+    setWindows(session, weekly) {
+        this._session = session === null ? null : (100 - session) / 100;
+        this._weekly = weekly === null ? null : (100 - weekly) / 100;
+        this._tone = session === null ? TONE.stale : tone(session);
+        this.queue_repaint();
+    }
+
+    _paint() {
+        const cr = this.get_context();
+        const [w, h] = this.get_surface_size();
+        const cx = w / 2, cy = h / 2;
+        const outerW = Math.max(2.5, w * 0.095);
+        const innerW = Math.max(1.5, w * 0.06);
+        const rOuter = w / 2 - outerW / 2 - 0.5;
+        const rInner = rOuter - outerW / 2 - innerW / 2 - 2.5;
+        const top = -Math.PI / 2;
+
+        cr.setLineCap(Cairo.LineCap.ROUND);
+
+        const ring = (r, lw, frac, rgb, alpha) => {
+            cr.setLineWidth(lw);
+            cr.setSourceRGBA(...TRACK_RGBA);
+            cr.arc(cx, cy, r, 0, 2 * Math.PI);
+            cr.stroke();
+            if (frac !== null && frac > 0) {
+                cr.setSourceRGBA(rgb[0], rgb[1], rgb[2], alpha);
+                cr.arc(cx, cy, r, top, top + 2 * Math.PI * Math.min(1, frac));
+                cr.stroke();
+            }
+        };
+
+        ring(rOuter, outerW, this._session, this._tone.rgb, 1.0);
+        if (this._weekly !== null || rInner > 3)
+            ring(rInner, innerW, this._weekly, this._tone.rgb, 0.55);
+
+        cr.$dispose();
+    }
+});
+
+// A dial with the provider's glyph sitting in the middle of it.
+const Dial = GObject.registerClass(
+class Dial extends St.Widget {
+    _init(size, glyph) {
         super._init({
-            style_class: 'cn-bar-track',
-            x_expand: false,
+            layout_manager: new Clutter.BinLayout(),
+            width: size,
+            height: size,
+        });
+        this.rings = new Rings(size);
+        this.add_child(this.rings);
+        this.glyph = new St.Label({
+            text: glyph,
+            style_class: 'cn-glyph',
+            x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
         });
+        this.add_child(this.glyph);
+    }
+});
+
+const UsageBar = GObject.registerClass(
+class UsageBar extends St.Bin {
+    _init(width) {
+        super._init({
+            style_class: 'cn-bar-track',
+            style: `width: ${width}px;`,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._width = width;
         this._fill = new St.Widget({
             style_class: 'cn-bar-fill cn-ok',
             x_align: Clutter.ActorAlign.START,
@@ -109,23 +219,64 @@ class UsageBar extends St.Bin {
     }
 
     setUsed(used) {
-        const px = Math.max(2, Math.round((BAR_WIDTH * used) / 100));
+        const left = 100 - used;
+        const px = Math.max(3, Math.round((this._width * left) / 100));
         this._fill.style = `width: ${px}px;`;
-        this._fill.style_class = `cn-bar-fill ${severity(used)}`;
+        this._fill.style_class = `cn-bar-fill ${tone(used).cls}`;
     }
 });
+
+// One provider's block in the hover callout and the popup: name, then a row
+// per window with a bar, percent left, and the reset countdown.
+function buildDetail(provider, windows, opts = {}) {
+    const box = new St.BoxLayout({vertical: true, style_class: 'cn-detail'});
+
+    const head = new St.BoxLayout({style_class: 'cn-detail-head'});
+    head.add_child(new St.Label({text: provider.glyph, style_class: 'cn-detail-glyph'}));
+    head.add_child(new St.Label({text: provider.name, style_class: 'cn-detail-name'}));
+    box.add_child(head);
+
+    for (const w of windows) {
+        const row = new St.BoxLayout({style_class: 'cn-detail-row'});
+        row.add_child(new St.Label({
+            text: w.label,
+            style_class: 'cn-detail-label',
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+        const bar = new UsageBar(opts.barWidth ?? BAR_WIDTH);
+        bar.setUsed(w.used);
+        row.add_child(bar);
+        row.add_child(new St.Label({
+            text: `${100 - w.used}%`,
+            style_class: `cn-detail-pct ${tone(w.used).cls}`,
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+        box.add_child(row);
+
+        const reset = resetLine(w.resetsAt);
+        if (reset)
+            box.add_child(new St.Label({text: reset, style_class: 'cn-detail-reset'}));
+    }
+    return box;
+}
 
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
     _init() {
         super._init(0.0, 'Codenotch', false);
 
+        // Top bar: a mini dial and the worst percent-left across providers.
+        const panelBox = new St.BoxLayout({style_class: 'cn-panel'});
+        this._panelRings = new Rings(PANEL_RING_SIZE);
+        this._panelRings.y_align = Clutter.ActorAlign.CENTER;
+        panelBox.add_child(this._panelRings);
         this._label = new St.Label({
-            text: '\u25CB',
+            text: '—',
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'cn-panel-label',
         });
-        this.add_child(this._label);
+        panelBox.add_child(this._label);
+        this.add_child(panelBox);
 
         this._section = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._section);
@@ -135,8 +286,10 @@ class Indicator extends PanelMenu.Button {
         this._session = new Soup.Session({timeout: 10});
         this._cancellable = new Gio.Cancellable();
         this._notch = null;
-        this._notchRows = null;
+        this._dials = null;
+        this._callout = null;
         this._placeId = 0;
+        this._entries = [];
 
         if (SHOW_EDGE_NOTCH)
             this._buildNotch();
@@ -155,22 +308,25 @@ class Indicator extends PanelMenu.Button {
     // -- the edge notch ------------------------------------------------------
 
     _buildNotch() {
+        // [ callout (hidden until hover) ][ dials column ] flush to the right edge.
         this._notch = new St.BoxLayout({
-            vertical: true,
             style_class: 'cn-notch',
             reactive: true,
             track_hover: true,
         });
-        this._notchRows = new St.BoxLayout({vertical: true});
-        this._notch.add_child(this._notchRows);
 
-        this._notch.connect('notify::hover', () => {
-            if (this._notch.hover)
-                this._notch.add_style_class_name('cn-notch-open');
-            else
-                this._notch.remove_style_class_name('cn-notch-open');
-            this._queuePlaceNotch();
+        this._callout = new St.BoxLayout({
+            vertical: true,
+            style_class: 'cn-callout',
+            visible: false,
+            opacity: 0,
         });
+        this._notch.add_child(this._callout);
+
+        this._dials = new St.BoxLayout({vertical: true, style_class: 'cn-dials'});
+        this._notch.add_child(this._dials);
+
+        this._notch.connect('notify::hover', () => this._setOpen(this._notch.hover));
         this._notch.connect('button-press-event', () => {
             this.menu.toggle();
             return Clutter.EVENT_STOP;
@@ -180,6 +336,33 @@ class Indicator extends PanelMenu.Button {
             affectsStruts: false,
             trackFullscreen: true,
         });
+    }
+
+    _setOpen(open) {
+        if (!this._callout)
+            return;
+        this._callout.remove_all_transitions();
+        if (open) {
+            this._notch.add_style_class_name('cn-notch-open');
+            this._callout.show();
+            this._callout.ease({
+                opacity: 255,
+                duration: 160,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            });
+        } else {
+            this._notch.remove_style_class_name('cn-notch-open');
+            this._callout.ease({
+                opacity: 0,
+                duration: 120,
+                mode: Clutter.AnimationMode.EASE_IN_QUAD,
+                onComplete: () => {
+                    this._callout?.hide();
+                    this._queuePlaceNotch();
+                },
+            });
+        }
+        this._queuePlaceNotch();
     }
 
     _queuePlaceNotch() {
@@ -228,107 +411,106 @@ class Indicator extends PanelMenu.Button {
     }
 
     _renderError(reason) {
-        this._label.text = '\u26A0';
+        this._label.text = '—';
         this._label.style_class = 'cn-panel-label cn-stale';
+        this._panelRings.setWindows(null, null);
+
         this._section.removeAll();
-        const item = new PopupMenu.PopupMenuItem(`No reading: ${reason}`, {
-            reactive: false,
-        });
-        this._section.addMenuItem(item);
-        const hint = new PopupMenu.PopupMenuItem(
-            'Check: systemctl --user status codexbar-serve', {reactive: false});
-        this._section.addMenuItem(hint);
-        if (this._notchRows) {
-            this._notchRows.destroy_all_children();
-            const l = new St.Label({text: '\u26A0', style_class: 'cn-notch-pct cn-stale'});
-            this._notchRows.add_child(l);
+        this._section.addMenuItem(new PopupMenu.PopupMenuItem(
+            `No reading: ${reason}`, {reactive: false}));
+        this._section.addMenuItem(new PopupMenu.PopupMenuItem(
+            'Check: systemctl --user status codexbar-serve', {reactive: false}));
+
+        if (this._dials) {
+            this._dials.destroy_all_children();
+            this._callout.destroy_all_children();
+            const cell = new St.BoxLayout({vertical: true, style_class: 'cn-cell'});
+            const dial = new Dial(RING_SIZE, '!');
+            dial.rings.setWindows(null, null);
+            cell.add_child(dial);
+            cell.add_child(new St.Label({
+                text: 'offline',
+                style_class: 'cn-cell-name',
+                x_align: Clutter.ActorAlign.CENTER,
+            }));
+            this._dials.add_child(cell);
+            this._callout.add_child(new St.Label({
+                text: `Can't reach codexbar serve\n${reason}`,
+                style_class: 'cn-detail-reset',
+            }));
             this._queuePlaceNotch();
         }
     }
 
     _render(entries) {
         this._section.removeAll();
-        if (this._notchRows)
-            this._notchRows.destroy_all_children();
+        if (this._dials) {
+            this._dials.destroy_all_children();
+            this._callout.destroy_all_children();
+        }
 
         let worst = null;
 
         for (const entry of entries) {
             const id = entry.provider ?? 'unknown';
-            const name = PROVIDER_NAMES[id] ?? id;
+            const provider = PROVIDERS[id] ?? {
+                name: id.charAt(0).toUpperCase() + id.slice(1),
+                glyph: id.charAt(0).toUpperCase(),
+            };
             const windows = windowsFrom(entry);
 
             if (entry.error || windows.length === 0) {
                 this._section.addMenuItem(new PopupMenu.PopupMenuItem(
-                    `${name}: no data`, {reactive: false}));
+                    `${provider.name}: no data`, {reactive: false}));
                 continue;
             }
 
-            const item = new PopupMenu.PopupBaseMenuItem({
-                reactive: false,
-                can_focus: false,
-            });
-            const box = new St.BoxLayout({vertical: true, x_expand: true});
-            box.add_child(new St.Label({text: name, style_class: 'cn-provider'}));
+            const session = windows.find(w => w.key === 'session') ?? windows[0];
+            const weekly = windows.find(w => w.key === 'weekly') ?? null;
 
-            for (const w of windows) {
-                const row = new St.BoxLayout({style_class: 'cn-row', x_expand: true});
-                row.add_child(new St.Label({
-                    text: w.label,
-                    style_class: 'cn-window',
-                    y_align: Clutter.ActorAlign.CENTER,
-                }));
-                const bar = new UsageBar();
-                bar.setUsed(w.used);
-                row.add_child(bar);
-                row.add_child(new St.Label({
-                    text: `${100 - w.used}% left`,
-                    style_class: `cn-pct ${severity(w.used)}`,
-                    y_align: Clutter.ActorAlign.CENTER,
-                }));
-                box.add_child(row);
-
-                const reset = resetText(w.resetsAt);
-                if (reset) {
-                    box.add_child(new St.Label({
-                        text: reset,
-                        style_class: 'cn-reset',
-                    }));
-                }
-            }
-
+            // Popup menu block.
+            const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+            const detail = buildDetail(provider, windows, {barWidth: BAR_WIDTH + 40});
             const pace = entry.pace?.primary?.summary;
             if (pace)
-                box.add_child(new St.Label({text: pace, style_class: 'cn-reset'}));
-
-            item.add_child(box);
+                detail.add_child(new St.Label({text: pace, style_class: 'cn-detail-reset'}));
+            item.add_child(detail);
             this._section.addMenuItem(item);
 
-            // Notch: one line per provider, the session window only.
-            const session = windows[0];
-            if (this._notchRows) {
-                const cell = new St.BoxLayout({vertical: true, style_class: 'cn-notch-cell'});
+            // Notch: a dial per provider, and its block in the hover callout.
+            if (this._dials) {
+                const cell = new St.BoxLayout({vertical: true, style_class: 'cn-cell'});
+                const dial = new Dial(RING_SIZE, provider.glyph);
+                dial.rings.setWindows(session.used, weekly ? weekly.used : null);
+                cell.add_child(dial);
                 cell.add_child(new St.Label({
-                    text: `${100 - session.used}`,
-                    style_class: `cn-notch-pct ${severity(session.used)}`,
+                    text: `${100 - session.used}%`,
+                    style_class: `cn-cell-pct ${tone(session.used).cls}`,
+                    x_align: Clutter.ActorAlign.CENTER,
                 }));
-                cell.add_child(new St.Label({
-                    text: name.split(' ')[0],
-                    style_class: 'cn-notch-name',
-                }));
-                this._notchRows.add_child(cell);
+                if (weekly) {
+                    cell.add_child(new St.Label({
+                        text: `wk ${100 - weekly.used}%`,
+                        style_class: 'cn-cell-sub',
+                        x_align: Clutter.ActorAlign.CENTER,
+                    }));
+                }
+                this._dials.add_child(cell);
+                this._callout.add_child(buildDetail(provider, windows));
             }
 
             if (!worst || session.used > worst.used)
-                worst = {used: session.used, name};
+                worst = {used: session.used, weekly: weekly?.used ?? null};
         }
 
         if (worst) {
             this._label.text = `${100 - worst.used}%`;
-            this._label.style_class = `cn-panel-label ${severity(worst.used)}`;
+            this._label.style_class = `cn-panel-label ${tone(worst.used).cls}`;
+            this._panelRings.setWindows(worst.used, worst.weekly);
         } else {
-            this._label.text = '\u25CB';
-            this._label.style_class = 'cn-panel-label';
+            this._label.text = '—';
+            this._label.style_class = 'cn-panel-label cn-stale';
+            this._panelRings.setWindows(null, null);
             this._section.addMenuItem(new PopupMenu.PopupMenuItem(
                 'No providers enabled', {reactive: false}));
         }
@@ -354,10 +536,12 @@ class Indicator extends PanelMenu.Button {
         this._session?.abort();
         this._session = null;
         if (this._notch) {
+            this._callout?.remove_all_transitions();
             Main.layoutManager.removeChrome(this._notch);
             this._notch.destroy();
             this._notch = null;
-            this._notchRows = null;
+            this._dials = null;
+            this._callout = null;
         }
         super.destroy();
     }

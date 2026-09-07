@@ -5,12 +5,20 @@ the right edge of the screen. A Linux answer to the macOS menu-bar usage
 trackers, built for GNOME on Wayland.
 
 ```
-panel:  ⌁ 88%          ← lowest remaining across enabled providers
-notch:  ┌────┐
-        │ 88 │ Claude   ← session window, hover to expand
-        │ 41 │ Codex
-        └────┘
+panel:  ◔ 88%                 ← mini dial + lowest percent left across providers
+
+notch:  ╭──────╮
+        │ (✱)  │  two rings per provider: outer = session window,
+        │ 88%  │  inner = weekly. Both drain clockwise from full.
+        │wk 63%│
+        │ (◎)  │  hover → a callout slides out with a bar per window,
+        │ 41%  │  percent left, and "resets in 2h 14m · 17:10" for each,
+        │wk 79%│  including scoped caps like Claude's model-specific weekly.
+        ╰──────╯
 ```
+
+Green under 75% used, amber to 90%, red past it. Click the notch or the panel
+item for the full popup.
 
 The extension makes no network calls and never touches your credentials. It
 reads JSON over localhost from a [CodexBar](https://github.com/steipete/CodexBar)
@@ -77,9 +85,13 @@ At the top of `extension.js`:
 | `ENDPOINT` | `http://127.0.0.1:8787/usage` | Must match the port in the systemd unit |
 | `POLL_SECONDS` | `30` | The server, not this, controls upstream load |
 | `SHOW_EDGE_NOTCH` | `true` | `false` leaves only the panel indicator |
-| `BAR_WIDTH` | `168` | Keep in sync with `.cn-bar-track` in `stylesheet.css` |
+| `RING_SIZE` | `46` | Dial diameter in the notch, px |
+| `PANEL_RING_SIZE` | `14` | Mini dial in the top bar, px |
+| `BAR_WIDTH` | `120` | Bars in the hover callout; the popup uses this + 40 |
 
-Thresholds live in `severity()`: amber at 75% used, red at 90%. Re-run
+Thresholds live in `tone()`: amber at 75% used, red at 90%. The three colours
+are defined once in `TONE` (extension.js, for the Cairo rings) and once in
+`stylesheet.css` (for text and bars); change both. Re-run
 `./install.sh` after editing, then log out and back in.
 
 ## Uninstall
