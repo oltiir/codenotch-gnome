@@ -1,0 +1,12 @@
+[Unit]
+Description=CodexBar usage JSON server (localhost)
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/codexbar serve --host 127.0.0.1 --port 8787 --refresh-interval 60
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

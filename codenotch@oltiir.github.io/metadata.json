@@ -1,0 +1,7 @@
+{
+  "uuid": "codenotch@oltiir.github.io",
+  "name": "Codenotch",
+  "description": "Pins Claude Code / Codex usage limits to the panel and the right screen edge. Reads JSON from a local `codexbar serve` process; makes no network calls of its own.",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51"],
+  "version-name": "0.1"
+}

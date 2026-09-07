@@ -1,0 +1,88 @@
+/* Colours are deliberately few: the shell theme owns the surface, and the only
+   colour this extension introduces is the usage state. */
+
+.cn-panel-label {
+    font-feature-settings: "tnum";
+    font-size: 0.9em;
+    padding: 0 4px;
+}
+
+.cn-ok { color: #8ff0a4; }
+.cn-warn { color: #f8e45c; }
+.cn-critical { color: #ff7b63; }
+.cn-stale { color: #9a9996; }
+
+/* popup ------------------------------------------------------------------- */
+
+.cn-provider {
+    font-weight: 700;
+    padding-bottom: 4px;
+}
+
+.cn-row {
+    spacing: 8px;
+    padding: 2px 0;
+}
+
+.cn-window {
+    min-width: 56px;
+    color: #c0bfbc;
+}
+
+.cn-pct {
+    min-width: 64px;
+    text-align: right;
+    font-feature-settings: "tnum";
+}
+
+.cn-reset {
+    color: #9a9996;
+    font-size: 0.85em;
+    padding: 0 0 6px 56px;
+}
+
+.cn-bar-track {
+    width: 168px;
+    height: 6px;
+    border-radius: 3px;
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.cn-bar-fill {
+    height: 6px;
+    border-radius: 3px;
+}
+
+.cn-bar-fill.cn-ok { background-color: #8ff0a4; }
+.cn-bar-fill.cn-warn { background-color: #f8e45c; }
+.cn-bar-fill.cn-critical { background-color: #ff7b63; }
+
+/* edge notch -------------------------------------------------------------- */
+
+.cn-notch {
+    background-color: rgba(0, 0, 0, 0.82);
+    border-radius: 12px 0 0 12px;
+    padding: 8px 4px 8px 6px;
+    transition-duration: 150ms;
+}
+
+.cn-notch:hover,
+.cn-notch-open {
+    padding: 10px 10px 10px 12px;
+    background-color: rgba(0, 0, 0, 0.94);
+}
+
+.cn-notch-cell {
+    padding: 3px 0;
+}
+
+.cn-notch-pct {
+    font-size: 0.95em;
+    font-weight: 700;
+    font-feature-settings: "tnum";
+}
+
+.cn-notch-name {
+    font-size: 0.65em;
+    color: #9a9996;
+}
