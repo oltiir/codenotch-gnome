@@ -1,0 +1,415 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+#
+# Codenotch for waybar: read `codexbar serve`'s JSON off loopback and print one
+# line of waybar custom-module JSON. Mirrors windowsFrom()/tone()/resetLine()
+# in the GNOME extension and usage.rs in the COSMIC applet, so all three
+# front-ends read the same numbers the same way.
+#
+# Everything is percent *used*, the way claude.ai reports it.
+
+import html
+import json
+import os
+import re
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from collections import namedtuple
+from datetime import datetime, timezone
+
+# ---- knobs -----------------------------------------------------------------
+
+ENDPOINT = "http://127.0.0.1:8787/usage"
+
+# `codexbar serve` fetches upstream on every /usage in 0.56.8 -- its
+# --refresh-interval governs the dashboard snapshot, not this endpoint -- so a
+# call costs as long as the slowest provider takes. Hence a slow cadence the
+# script paces itself, rather than waybar's `interval`.
+REFRESH = 120  # seconds between fetches
+TIMEOUT = 45   # seconds; must exceed the sum of the providers' own timeouts
+
+# Percent *used* at which the colour turns. Mirrors claude.ai's usage panel.
+WARN_AT = 70
+CRITICAL_AT = 90
+
+LABEL = "AI"
+CELLS = 10  # gauge width, matching the CPU/MEM/VOL modules
+
+PROVIDERS = {
+    "claude": ("Claude", "✱"),
+    "codex": ("Codex", "◎"),
+    "cursor": ("Cursor", "△"),
+    "copilot": ("Copilot", "⌘"),
+    "gemini": ("Gemini", "✦"),
+}
+
+# ---- parsing ---------------------------------------------------------------
+
+Window = namedtuple("Window", "key group label used resets_at")
+
+
+def providers_from(data):
+    """`codexbar serve` mirrors the CLI, which emits a single object for one
+    provider and a collection for several. Be liberal about the envelope."""
+    if isinstance(data, list):
+        return data
+    if not isinstance(data, dict):
+        return []
+    for key in ("providers", "usages", "results", "items"):
+        if isinstance(data.get(key), list):
+            return data[key]
+    if data.get("usage") or data.get("provider"):
+        return [data]
+    return []
+
+
+def clamp_pct(n):
+    """A percentage rounded into 0-100, or None when it isn't a number."""
+    if isinstance(n, bool) or not isinstance(n, (int, float)):
+        return None
+    return max(0, min(100, round(n)))
+
+
+def windows_from(entry):
+    """Every rate window CodexBar knows about for one provider, in claude.ai's
+    display order and named the way claude.ai names them: the session window,
+    then the weekly ones -- the all-models cap and any scoped caps. `group`
+    lets the tooltip put a "Weekly limits" heading before the weekly rows;
+    `key` lets the bar pick out the session window."""
+    usage = (entry or {}).get("usage") or {}
+    out = []
+
+    def push(key, group, label, w):
+        used = clamp_pct((w or {}).get("usedPercent"))
+        if used is not None:
+            out.append(Window(key, group, label, used, (w or {}).get("resetsAt")))
+
+    push("session", "session", "Current session", usage.get("primary"))
+    push("weekly", "weekly", "All models", usage.get("secondary"))
+    push("tertiary", "weekly", "Model", usage.get("tertiary"))
+    for extra in usage.get("extraRateWindows") or []:
+        # CodexBar titles these "Fable only"; claude.ai just says "Fable".
+        title = extra.get("title") or "Scoped"
+        label = title[:-5].rstrip() if title.lower().endswith(" only") else title
+        push(extra.get("id") or "extra", "weekly", label, extra.get("window"))
+    return out
+
+
+# ---- presentation ----------------------------------------------------------
+
+# Rose Pine, keeping codenotch's 70/90 thresholds. Pine is the one palette hue
+# the stock Omarchy bar hasn't already spoken for (iris=MEM, rose=CPU,
+# foam=VOL), so an untroubled quota reads as its own thing. Rose Pine Moon's
+# pine rather than the base variant's #31748f, which lands at 3.4:1 on the bar
+# background -- as dim as the muted grey used for de-emphasis.
+COLOURS = {
+    "ok": "#3e8fb0",        # pine (Moon), 4.8:1 on @base
+    "warn": "#f6c177",      # gold
+    "critical": "#eb6f92",  # love
+    "muted": "#6e6a86",     # muted -- an untouched gauge, and the offline state
+}
+
+
+def tone(used):
+    if used >= CRITICAL_AT:
+        return "critical"
+    if used >= WARN_AT:
+        return "warn"
+    return "ok"
+
+
+def filled_cells(used):
+    """Cells to fill for a percentage. Rounds to the nearest tenth, except that
+    only a spent quota gets all ten -- otherwise 95% would draw the same full
+    gauge as 100%, reading as exhausted while a twentieth is still there."""
+    if used >= 100:
+        return CELLS
+    return min(CELLS - 1, int(used / 10 + 0.5))
+
+
+def gauge(used):
+    """One pango span holding all ten cells, the way the stock CPU/MEM/VOL
+    modules draw theirs, so the bar reads as one instrument."""
+    n = filled_cells(used)
+    colour = COLOURS["muted"] if n == 0 else COLOURS[tone(used)]
+    return "<span size='10pt' color='%s'>%s%s</span>" % (
+        colour, "█" * n, "░" * (CELLS - n))
+
+
+def parse_iso(s):
+    if not isinstance(s, str):
+        return None
+    try:
+        # fromisoformat only learned to read a trailing Z in 3.11.
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def countdown(iso, now):
+    """"59 min", "13 hr 49 min", "2 days 3 hr" -- claude.ai's phrasing."""
+    at = parse_iso(iso)
+    if at is None:
+        return ""
+    secs = (at - now).total_seconds()
+    if secs <= 0:
+        return "now"
+    mins = round(secs / 60)
+    if mins < 60:
+        return "%d min" % mins
+    hours, mins = mins // 60, mins % 60
+    if hours < 24:
+        return "%d hr %d min" % (hours, mins) if mins else "%d hr" % hours
+    days, hours = hours // 24, hours % 24
+    return "%d %s%s" % (days, "day" if days == 1 else "days",
+                        " %d hr" % hours if hours else "")
+
+
+def clock_text(iso, now):
+    """"22:10" for today, "Tue 06:00" otherwise, in the viewer's timezone."""
+    at = parse_iso(iso)
+    if at is None:
+        return ""
+    at = at.astimezone(now.tzinfo)
+    return at.strftime("%H:%M" if at.date() == now.date() else "%a %H:%M")
+
+
+def reset_line(iso, now):
+    cd = countdown(iso, now)
+    if not cd:
+        return ""
+    if cd == "now":
+        return "Resetting"
+    clock = clock_text(iso, now)
+    return "Resets in %s  ·  %s" % (cd, clock) if clock else "Resets in %s" % cd
+
+
+# ---- the payload -----------------------------------------------------------
+
+LABEL_WIDTH = 16  # widest of claude.ai's own window names, "Current session"
+
+
+def esc(s):
+    """Pango markup is the tooltip's language, so provider-supplied text has to
+    be escaped into it rather than interpreted as it."""
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def dim(s):
+    return "<span color='%s'>%s</span>" % (COLOURS["muted"], s)
+
+
+def provider_meta(pid):
+    """Name and glyph, falling back to something legible for a provider
+    CodexBar has learned about since this was written."""
+    if pid in PROVIDERS:
+        return PROVIDERS[pid]
+    return (str(pid or "Unknown").replace("-", " ").title(), "•")
+
+
+def ordered(entries):
+    """Providers in the canonical order of the PROVIDERS map, so the tooltip
+    doesn't reshuffle when CodexBar changes the order it answers in."""
+    rank = list(PROVIDERS)
+
+    def key(item):
+        i, entry = item
+        pid = (entry or {}).get("provider")
+        return (rank.index(pid) if pid in rank else len(rank) + i, i)
+
+    return [e for _, e in sorted(enumerate(entries), key=key)]
+
+
+def provider_block(entry, now):
+    """One provider, laid out like claude.ai's usage panel: the window name,
+    a bar, the percent used, the reset time underneath, and a "Weekly limits"
+    heading before the weekly rows."""
+    name, glyph = provider_meta(entry.get("provider"))
+    lines = ["<b>%s %s</b>" % (esc(glyph), esc(name))]
+
+    windows = windows_from(entry)
+    if not windows:
+        why = ((entry.get("error") or {}).get("message") or "").strip()
+        lines.append("<tt>  %s</tt>" % dim(esc("no data · %s" % why if why else "no data")))
+        return lines
+
+    heading_done = False
+    for w in windows:
+        if w.group == "weekly" and not heading_done:
+            lines.append("<tt>  %s</tt>" % dim("Weekly limits"))
+            heading_done = True
+        # Padded before escaping, so an "&" in a title can't widen the column.
+        lines.append("<tt>  %s %s %3d%%</tt>" % (
+            esc(w.label.ljust(LABEL_WIDTH)), gauge(w.used), w.used))
+        reset = reset_line(w.resets_at, now)
+        if reset:
+            lines.append("<tt>    %s</tt>" % dim(esc(reset)))
+
+    pace = ((entry.get("pace") or {}).get("primary") or {}).get("summary")
+    if pace:
+        lines.append("<tt>  %s</tt>" % dim(esc(pace)))
+    return lines
+
+
+def worst_session(data):
+    """The highest session percent across providers -- the number the GNOME
+    panel indicator shows, so the bar and the panel agree."""
+    worst = None
+    for entry in providers_from(data):
+        windows = windows_from(entry)
+        if not windows:
+            continue
+        session = next((w for w in windows if w.key == "session"), windows[0])
+        if worst is None or session.used > worst:
+            worst = session.used
+    return worst
+
+
+def payload(text, tooltip, cls, pct=None):
+    out = {"text": text, "tooltip": tooltip, "class": cls}
+    if pct is not None:
+        out["percentage"] = pct
+    return out
+
+
+def render(data, now):
+    entries = ordered(providers_from(data))
+    tooltip = "\n\n".join("\n".join(provider_block(e, now)) for e in entries)
+
+    worst = worst_session(entries)
+    if worst is None:
+        # Either nothing is enabled or every provider failed. Say so with a
+        # dash rather than a zero, which would read as "nothing used yet".
+        return payload("%s %s —" % (LABEL, gauge(0)),
+                       tooltip or "No providers enabled", "stale")
+
+    return payload("%s %s %02d%%" % (LABEL, gauge(worst), worst),
+                   tooltip, tone(worst), worst)
+
+
+def offline(why):
+    out = payload(
+        "%s %s —" % (LABEL, gauge(0)),
+        "<b>Codenotch offline</b>\n"
+        "%s\n\n<tt>systemctl --user status codexbar-serve</tt>" % esc(why),
+        "stale")
+    out["reason"] = str(why)
+    return out
+
+
+# ---- the last good payload -------------------------------------------------
+
+def cache_path():
+    """Runtime dir when there is one -- it's tmpfs and cleared at logout, which
+    is exactly the lifetime a bar reading wants."""
+    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    return os.path.join(base, "codenotch-waybar.json")
+
+
+def load_cache():
+    """The payload from the last run, or None if there isn't a usable one."""
+    try:
+        with open(cache_path()) as f:
+            cached = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return cached if isinstance(cached, dict) and "text" in cached else None
+
+
+def save_cache(out):
+    """Best effort. A bar that can't write its cache still shows the numbers."""
+    try:
+        tmp = cache_path() + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(out, f, ensure_ascii=False)
+        os.replace(tmp, cache_path())
+    except OSError:
+        pass
+
+
+def stale_reading(cached, why):
+    """The last good reading, kept but marked dated. CodexBar falls back to its
+    own last good answer rather than blanking, and one slow provider shouldn't
+    cost the bar its numbers for a whole refresh cycle. With nothing cached --
+    or nothing but another failure -- there is nothing to fall back to."""
+    if not cached or cached.get("class") == "stale":
+        return offline(why)
+    out = dict(cached)
+    out["class"] = "stale"
+    out["tooltip"] = "%s\n\n%s" % (
+        cached.get("tooltip", ""),
+        dim(esc("Last good reading -- the server stopped answering: %s" % why)))
+    return out
+
+
+def after_fetch(out, cached):
+    """A failed fetch -- and only a failed fetch -- falls back to the last good
+    reading. "No providers enabled" and "every provider errored" both mean the
+    server answered, and swapping an older reading in would hide that."""
+    if "reason" not in out:
+        return out
+    return stale_reading(cached, out["reason"])
+
+
+def plain_text(out):
+    """The same breakdown for a terminal: `--print`, which is what clicking the
+    module opens. The headline drops the gauge, which the rows already carry."""
+    pct = out.get("percentage")
+    head = "%s %s" % (LABEL, "%d%%" % pct if pct is not None else "—")
+    body = html.unescape(re.sub(r"<[^>]+>", "", out.get("tooltip", "")))
+    return "%s\n\n%s" % (head, body)
+
+
+# ---- entry point -----------------------------------------------------------
+
+def fetch():
+    """The current payload, or the offline one when the server can't be read."""
+    try:
+        with urllib.request.urlopen(ENDPOINT, timeout=TIMEOUT) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return offline(getattr(e, "reason", None) or e)
+    return render(data, datetime.now().astimezone())
+
+
+def emit(out):
+    print(json.dumps(out, ensure_ascii=False), flush=True)
+
+
+def main(argv):
+    once = "--once" in argv
+
+    if "--print" in argv:
+        # Prefer what the running module last saw: a fetch costs seconds, and
+        # this is the click handler, where a stalled terminal is the worst of
+        # all outcomes.
+        print(plain_text(load_cache() or fetch()))
+        return 0
+
+    # Waybar paints whatever it has been given last, so leading with the
+    # cached payload fills the module immediately instead of leaving a gap
+    # for the length of the first fetch.
+    if not once:
+        cached = load_cache()
+        if cached:
+            emit(cached)
+
+    while True:
+        out = after_fetch(fetch(), load_cache())
+        emit(out)
+        if out.get("class") != "stale":
+            save_cache(out)
+        if once:
+            return 0
+        time.sleep(REFRESH)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        sys.exit(0)
