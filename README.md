@@ -28,14 +28,23 @@ notch:  ┌────┐
 
 There's no Fedora package, so take the glibc Linux tarball from
 [CodexBar releases](https://github.com/steipete/CodexBar/releases) — the file is
-named `CodexBarCLI-v<tag>-linux-x86_64.tar.gz`:
+named `CodexBarCLI-v<tag>-linux-x86_64.tar.gz`.
+
+The tarball holds a `CodexBarCLI` binary *and* a `CodexBar_CodexBarCore.bundle`
+directory of provider plugins that has to stay beside it, so install the whole
+payload and symlink the entrypoint rather than copying the binary alone:
 
 ```fish
-mkdir -p ~/.local/bin
+mkdir -p ~/.local/libexec/codexbar ~/.local/bin
 tar -xzf ~/Downloads/CodexBarCLI-v*-linux-x86_64.tar.gz -C /tmp
-install -m755 /tmp/codexbar ~/.local/bin/codexbar   # or /tmp/CodexBarCLI
+cp -r /tmp/CodexBarCLI /tmp/CodexBar_CodexBarCore.bundle /tmp/VERSION ~/.local/libexec/codexbar/
+chmod 755 ~/.local/libexec/codexbar/CodexBarCLI
+ln -sf ~/.local/libexec/codexbar/CodexBarCLI ~/.local/bin/codexbar
 codexbar --version
 ```
+
+A `libcurl.so.4: no version information available` line on every invocation is a
+harmless symbol-versioning notice from the glibc build, not a failure.
 
 If the dynamic loader complains, use the `linux-musl-x86_64` tarball instead —
 it's statically linked.
@@ -82,8 +91,12 @@ provoke an upstream rate limit.
 ### 4. The extension
 
 ```fish
-cp -r "codenotch@oltiir.github.io" ~/.local/share/gnome-extensions/
+mkdir -p ~/.local/share/gnome-shell/extensions
+cp -r "codenotch@oltiir.github.io" ~/.local/share/gnome-shell/extensions/
 ```
+
+Note the path: it's `gnome-shell/extensions`, not `gnome-extensions`. The shell
+silently ignores anything in the latter.
 
 ## Activate
 
@@ -97,8 +110,23 @@ won't be picked up until the session restarts. Either log out and back in, or
 test it in a nested shell first:
 
 ```fish
-dbus-run-session -- gnome-shell --nested --wayland
+dbus-run-session -- gnome-shell --wayland
 ```
+
+Nesting is implicit there — Shell 50 removed the `--nested` flag, and errors out
+with `Unknown option --nested` if you pass it. To check the extension loaded
+without opening a window at all:
+
+```fish
+dbus-run-session -- sh -c '
+  gnome-shell --headless --virtual-monitor 1280x720 --wayland-display wl-test &
+  sleep 25
+  gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+    --method org.gnome.Shell.Extensions.GetExtensionInfo codenotch@oltiir.github.io
+'
+```
+
+`state: 1` is enabled, `state: 3` is an error — and the `error` field says why.
 
 Watch the logs while it starts:
 
@@ -110,7 +138,7 @@ To disable or remove:
 
 ```fish
 gnome-extensions disable codenotch@oltiir.github.io
-rm -rf ~/.local/share/gnome-extensions/codenotch@oltiir.github.io
+rm -rf ~/.local/share/gnome-shell/extensions/codenotch@oltiir.github.io
 ```
 
 ## Configuration
@@ -137,8 +165,10 @@ list in `metadata.json`.
 **Popup says "no data" for a provider** — that provider's fetch failed inside
 CodexBar. Reproduce it directly: `codexbar --provider <id> --format json -v`.
 
-**Notch in the way** — set `affectsInputRegion: false` in `_buildNotch()` to make
-it click-through, or `SHOW_EDGE_NOTCH = false` to drop it.
+**Notch in the way** — set `reactive: false` on the `St.BoxLayout` in
+`_buildNotch()` to make it click-through, or `SHOW_EDGE_NOTCH = false` to drop
+it. (On Shell 45-49 this was `affectsInputRegion: false` in the `addChrome()`
+params; Shell 50 rejects that parameter, so reactivity governs it instead.)
 
 ## Known limits
 

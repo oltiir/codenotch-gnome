@@ -177,7 +177,6 @@ class Indicator extends PanelMenu.Button {
         });
 
         Main.layoutManager.addChrome(this._notch, {
-            affectsInputRegion: true,
             affectsStruts: false,
             trackFullscreen: true,
         });
