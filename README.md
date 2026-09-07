@@ -110,12 +110,17 @@ won't be picked up until the session restarts. Either log out and back in, or
 test it in a nested shell first:
 
 ```fish
-dbus-run-session -- gnome-shell --wayland
+dbus-run-session -- gnome-shell --devkit
 ```
 
-Nesting is implicit there — Shell 50 removed the `--nested` flag, and errors out
-with `Unknown option --nested` if you pass it. To check the extension loaded
-without opening a window at all:
+Shell 50 removed `--nested` (it fails with `Unknown option --nested`). Use
+`--devkit` for a nested shell; plain `--wayland` is *not* nested — it tries to
+take the seat and dies with `Failed to take control of the session: EBUSY`
+while your real session holds it. On Fedora `--devkit` also logs
+`Failed to launch devkit: /usr/libexec/mutter-devkit (No such file or
+directory)`; that helper is unpackaged and the nested shell runs regardless.
+
+To check the extension loaded without opening a window at all:
 
 ```fish
 dbus-run-session -- sh -c '
