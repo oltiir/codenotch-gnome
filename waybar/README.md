@@ -5,7 +5,8 @@ the same idiom as the stock `CPU` / `MEM` / `VOL` modules. Built for Omarchy on
 Hyprland, but nothing here is Omarchy-specific beyond one restart command.
 
 ```
-bar:      … BAT FULL   CC ████░░░░░░ 39%   CDX ░░░░░░░░░░ 03%
+bar:      … BAT FULL   CC ████░░░░░░ 41%   CDX ░░░░░░░░░░ 03%
+                       ^^^^^^^^^^^^^^^^^ coral   ^^^^^^^^^^^^^^^^ pine
 
 hover CC:                          hover CDX:
   ◉ Claude                           ◎ Codex
@@ -21,10 +22,10 @@ Everything is percent **used**, the way claude.ai reports it. Each module shows
 its own provider's *session* window and carries that provider's whole
 breakdown in its own tooltip — hover Claude, get only Claude.
 
-The label is the provider's own colour — Anthropic's coral for Claude — and
-the gauge and figure carry the limit: pine under 70%, gold from 70%, love from
-90%. Two colours because there are two things to say; see below for why they
-can't share one.
+A module wears its provider's own colour — Anthropic's coral for Claude —
+while the quota is healthy, which is nearly all the time. Past 70% the gauge
+and figure turn gold, past 90% red; the label keeps the provider's colour
+throughout, so a warning module is still identifiable at a glance.
 
 ## Setup
 
@@ -140,31 +141,41 @@ At the top of `codenotch-waybar`:
 | `POLL` | `30` | Seconds between redraws, so countdowns stay honest |
 | `TIMEOUT` | `45` | Must exceed the sum of the enabled providers' own timeouts |
 | `LABELS` | `CC`, `CDX`, … | Per-provider bar labels |
-| `LABEL_COLOURS` | coral for Claude | Per-provider label colour; the rest use `COLOURS["ok"]` |
+| `PROVIDER_COLOURS` | coral for Claude | A provider's own hue; the rest use `COLOURS["ok"]` |
 | `CELLS` | `10` | Gauge width, matching the stock CPU/MEM modules |
 
 Thresholds are `WARN_AT = 70` and `CRITICAL_AT = 90` (percent used). Every
-colour lives in `COLOURS` and `LABEL_COLOURS`, and nowhere else: a percentage
+colour lives in `COLOURS` and `PROVIDER_COLOURS`, and nowhere else: a percentage
 can't be expressed in CSS, so the colours are inline pango markup and the
 stylesheet keeps only the spacing. Re-run `./install-waybar.sh` after editing.
 
-### Why identity and severity are on different elements
+### What a provider colour costs, and what it doesn't
 
-A module has two things to say: which provider it is, and how close to the
-limit it is. Putting both on the same text does not work. Anthropic's coral
-`#d97757` sits **14 degrees of hue** from the 90% red and 24 from the 70%
-gold — so a coral module at 5% and a red one at 95% would read the same, and
-colouring Claude by brand would have cost it the warning that is the whole
-point of the thing.
+A module says two things at once: which provider it is, and how close to the
+limit it is. Anthropic's coral `#d97757` sits **24 degrees of hue** from the
+70% gold and **14** from the 90% red, so for a provider wearing coral the
+threshold can't read as a change of hue. It reads as a change of *lightness*
+instead — and that works unevenly:
 
-So the label wears the provider's colour, always, and the gauge and figure wear
-the limit's. `tests/test_colours.py` holds that apart: it checks each colour
-clears 4.5:1 on the bar background, that the three severity colours are more
-than 40 degrees of hue apart, and — so nobody merges them back — that the
-identity colour would have failed that test.
+| step | against coral | reads as |
+| --- | --- | --- |
+| coral → gold (70%) | 1.90:1 lighter | clear |
+| coral → red (90%) | 1.07:1 | weak — the fill level and the figure carry it |
 
-Note that hue distance, not contrast ratio, is the measure that matters here:
-pine and love sit at 1.25:1 against each other and are plainly blue and pink.
+So at 90% a coral module leans on nine filled cells and the number rather than
+on the colour. That is a deliberate trade for brand colour on the module you
+look at every day; the label keeping its hue is what preserves identity when
+the rest of the module has turned.
+
+`tests/test_colours.py` pins all of it: every colour clears 4.5:1 on the bar
+background, the three threshold colours are more than 40 degrees of hue apart
+from each other, and the coral→gold and coral→red lightness steps are asserted
+at their real values, so neither can drift unnoticed.
+
+Note that hue distance, not contrast ratio, is the right measure between the
+threshold colours: pine and red sit at 1.25:1 against each other and are
+plainly blue and pink. For coral against them, lightness is the measure,
+because the hues are already close.
 
 ## Two things the layout answers to
 

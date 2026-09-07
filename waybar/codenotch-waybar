@@ -116,12 +116,16 @@ def windows_from(entry):
 # foam=VOL), so an untroubled quota reads as its own thing. Rose Pine Moon's
 # pine rather than the base variant's #31748f, which lands at 3.4:1 on the bar
 # background -- as dim as the muted grey used for de-emphasis.
-# A module has two things to say -- which provider it is, and how close to the
-# limit it is -- and they cannot share an element. Anthropic's coral sits 14
-# degrees of hue from the 90% red, so a coral module at 5% and a red one at 95%
-# would read the same. So the label carries identity, and the gauge and the
-# figure carry severity.
-LABEL_COLOURS = {
+# A provider's own colour, worn by the whole module while the quota is healthy
+# -- which is nearly all the time. The thresholds below still override it on
+# the gauge and the figure, so a warning is never dressed as brand colour; the
+# label keeps this hue throughout, so a warning module is still identifiable.
+#
+# Coral is hue-adjacent to both gold (24 degrees) and red (14), so for a
+# provider wearing it the threshold reads as a jump in lightness rather than in
+# hue. Gold is 1.9:1 lighter and reads clearly. Red is 1.07:1, so at 90% the
+# fill level and the figure carry more of the signal than the colour does.
+PROVIDER_COLOURS = {
     "claude": "#d97757",    # Anthropic's coral, 5.7:1 on @base
 }
 
@@ -150,9 +154,16 @@ def filled_cells(used):
     return min(CELLS - 1, int(used / 10 + 0.5))
 
 
-def label_colour(pid):
+def provider_colour(pid):
     """A provider's own hue, or the default for the combined reading."""
-    return LABEL_COLOURS.get(pid, COLOURS["ok"])
+    return PROVIDER_COLOURS.get(pid, COLOURS["ok"])
+
+
+def tone_colour(used, pid=None):
+    """The severity colour, except that an untroubled module wears its
+    provider's own hue rather than the default one."""
+    t = tone(used)
+    return provider_colour(pid) if t == "ok" else COLOURS[t]
 
 
 def gauge_cells(used):
@@ -161,11 +172,11 @@ def gauge_cells(used):
     return "█" * n + "░" * (CELLS - n)
 
 
-def gauge(used):
+def gauge(used, pid=None):
     """One pango span holding all ten cells, the way the stock CPU/MEM/VOL
     modules draw theirs, so the bar reads as one instrument."""
     n = filled_cells(used)
-    colour = COLOURS["muted"] if n == 0 else COLOURS[tone(used)]
+    colour = COLOURS["muted"] if n == 0 else tone_colour(used, pid)
     return "<span size='10pt' color='%s'>%s</span>" % (colour, gauge_cells(used))
 
 
@@ -407,16 +418,18 @@ def tinted(text, colour):
 
 
 def bar_text(pid, used):
-    """Label in the provider's hue, gauge and figure in the severity one. All
-    of it inline, so the colours live in one place -- a percentage can't be
-    expressed in CSS, so the stylesheet could never have been that place."""
+    """The provider's hue throughout while the quota is healthy; the gauge and
+    figure take the threshold's colour once it isn't. All of it inline, so the
+    colours live in one place -- a percentage can't be expressed in CSS, so the
+    stylesheet could never have been that place."""
     label = label_for(pid)
     if used is None:
         # Nothing to report: the whole module goes quiet, identity included.
         return "%s %s %s" % (tinted(label, COLOURS["muted"]), gauge(0),
                              tinted("—", COLOURS["muted"]))
-    return "%s %s %s" % (tinted(label, label_colour(pid)), gauge(used),
-                         tinted("%02d%%" % used, COLOURS[tone(used)]))
+    return "%s %s %s" % (tinted(label, provider_colour(pid)),
+                         gauge(used, pid),
+                         tinted("%02d%%" % used, tone_colour(used, pid)))
 
 
 def render(data, now, pid=None):

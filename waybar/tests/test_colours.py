@@ -1,8 +1,6 @@
-"""Two colour jobs on one module: which provider this is, and how close to the
-limit it is. They can't share an element -- Anthropic's coral sits at 1.07:1
-against the 90% red, so a coral module at 5% and a red one at 95% would look
-the same. So the label carries identity and the gauge and figure carry
-severity."""
+"""A module is its provider's colour while all is well, and turns gold then red
+as the quota fills. The label keeps the provider's colour throughout, so two
+modules are still told apart at a glance when one of them is warning."""
 
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -21,38 +19,49 @@ def bar(pid, used):
 
 
 class Identity(unittest.TestCase):
-    def test_claude_wears_anthropics_coral(self):
-        self.assertIn(cn.LABEL_COLOURS["claude"], bar("claude", 39))
+    def test_an_untroubled_claude_is_coral_throughout(self):
+        # Label, gauge and figure: the whole module, which is the state it is
+        # in nearly all the time.
+        text = bar("claude", 41)
+        self.assertEqual(text.count(cn.PROVIDER_COLOURS["claude"]), 3)
+        self.assertNotIn(cn.COLOURS["ok"], text)
 
     def test_codex_keeps_the_default_hue(self):
-        self.assertIn(cn.COLOURS["ok"], bar("codex", 3))
-        self.assertNotIn(cn.LABEL_COLOURS["claude"], bar("codex", 3))
+        self.assertIn(cn.COLOURS["ok"], bar("codex", 41))
+        self.assertNotIn(cn.PROVIDER_COLOURS["claude"], bar("codex", 41))
 
-    def test_the_identity_colour_does_not_change_with_usage(self):
+    def test_the_label_keeps_the_providers_colour_even_when_warning(self):
+        # So a warning module is still identifiable as Claude's.
         for used in (5, 75, 95):
             with self.subTest(used=used):
-                self.assertIn(cn.LABEL_COLOURS["claude"], bar("claude", used))
+                self.assertIn(cn.PROVIDER_COLOURS["claude"], bar("claude", used))
 
     def test_the_combined_module_has_no_providers_identity(self):
         text = cn.render(fixture("live.json"), NOW)["text"]
-        self.assertNotIn(cn.LABEL_COLOURS["claude"], text)
+        self.assertNotIn(cn.PROVIDER_COLOURS["claude"], text)
 
 
 class Severity(unittest.TestCase):
-    def test_the_figure_turns_with_the_threshold_even_for_claude(self):
-        # The whole point: Claude being coral must not cost it the warning.
-        self.assertIn(cn.COLOURS["warn"], bar("claude", 75))
-        self.assertIn(cn.COLOURS["critical"], bar("claude", 95))
+    """Being coral must not cost Claude the warning, so the thresholds still
+    override it on the gauge and the figure."""
+
+    def test_the_gauge_and_figure_turn_gold_at_seventy(self):
+        text = bar("claude", 75)
+        self.assertEqual(text.count(cn.COLOURS["warn"]), 2)
+
+    def test_and_red_at_ninety(self):
+        text = bar("claude", 95)
+        self.assertEqual(text.count(cn.COLOURS["critical"]), 2)
 
     def test_an_untroubled_claude_shows_no_warning_colours(self):
-        text = bar("claude", 39)
+        text = bar("claude", 41)
         self.assertNotIn(cn.COLOURS["warn"], text)
         self.assertNotIn(cn.COLOURS["critical"], text)
 
     def test_a_module_with_no_reading_is_muted_all_through(self):
         out = cn.render([], NOW, "claude")
         self.assertIn(cn.COLOURS["muted"], out["text"])
-        self.assertNotIn(cn.LABEL_COLOURS["claude"], out["text"])
+        self.assertNotIn(cn.PROVIDER_COLOURS["claude"], out["text"])
 
 
 class StillReadable(unittest.TestCase):
@@ -71,7 +80,7 @@ class StillReadable(unittest.TestCase):
     BAR_BACKGROUND = "#191724"  # rose-pine @base
 
     def test_every_colour_is_legible_on_the_bar(self):
-        colours = dict(cn.COLOURS, **cn.LABEL_COLOURS)
+        colours = dict(cn.COLOURS, **cn.PROVIDER_COLOURS)
         for name, hexcode in colours.items():
             if name == "muted":
                 continue  # deliberately dim: it means "no reading"
@@ -97,13 +106,14 @@ class StillReadable(unittest.TestCase):
                 self.assertGreater(
                     self.hue_apart(cn.COLOURS[a], cn.COLOURS[b]), 40)
 
-    def test_the_identity_colour_could_not_have_served_as_a_severity_one(self):
-        # This is why identity and severity live on different elements: coral
-        # is hue-adjacent to both the 70% and the 90% colour, so a coral
-        # module would have been unreadable as a warning.
-        coral = cn.LABEL_COLOURS["claude"]
-        self.assertLess(self.hue_apart(coral, cn.COLOURS["warn"]), 40)
-        self.assertLess(self.hue_apart(coral, cn.COLOURS["critical"]), 40)
+    def test_a_provider_colour_is_told_from_the_warning_by_lightness(self):
+        # Coral is hue-adjacent to gold (24 degrees) and to red (14), so for a
+        # provider wearing it the threshold reads as a lightness jump rather
+        # than a hue change. Gold gives that; red gives much less of one, so
+        # for Claude at 90% the fill level and the figure do most of the work.
+        coral = cn.PROVIDER_COLOURS["claude"]
+        self.assertGreater(self.contrast(coral, cn.COLOURS["warn"]), 1.8)
+        self.assertLess(self.contrast(coral, cn.COLOURS["critical"]), 1.2)
 
 
 if __name__ == "__main__":
