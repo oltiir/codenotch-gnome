@@ -38,8 +38,8 @@ Wayland cannot load an extension into a running shell, so the panel won't show
 it until the session restarts. After that both pieces start on their own at
 every login.
 
-You need GNOME Shell 45+ and Claude Code and/or Codex already signed in on this
-machine. The script needs `curl`, `tar` and `python3`, which a GNOME system
+You need GNOME Shell 45+ (on COSMIC, see below) and Claude Code and/or Codex
+already signed in on this machine. The script needs `curl`, `tar` and `python3`, which a GNOME system
 already has.
 
 <details>
@@ -75,6 +75,25 @@ extension can't reach the server — a data problem, not an extension problem:
 systemctl --user status codexbar-serve
 curl -s localhost:8787/usage | jq
 ```
+
+## COSMIC / Pop!_OS 24.04
+
+The GNOME extension can't run on COSMIC: COSMIC is System76's Rust desktop and
+has no JavaScript extension system. So there's a native **COSMIC applet** in
+[`cosmic/`](cosmic/) instead: same dials, same claude.ai-style details, same
+70/90 colours, reading the same local server.
+
+```sh
+./install.sh                 # CLI + server; skips the GNOME extension when there's no GNOME Shell
+cd cosmic && just install    # builds and installs the applet per-user, no sudo
+```
+
+Then **Settings → Desktop → Panel → Configure panel applets → Add applet →
+Codenotch**. Build dependencies, configuration and troubleshooting are in
+[`cosmic/README.md`](cosmic/README.md).
+
+Pop!_OS 22.04 (GNOME Shell 42) is out of reach for both: the extension needs
+Shell 45+, and 22.04 has no COSMIC panel.
 
 ## Configuration
 

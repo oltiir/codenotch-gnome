@@ -21,13 +21,16 @@ die()  { printf '\033[1;31mx\033[0m  %s\n' "$*" >&2; exit 1; }
 # --- preflight -------------------------------------------------------------
 say "Checking this machine"
 
-for tool in curl tar python3 systemctl gsettings; do
+for tool in curl tar python3 systemctl; do
     command -v "$tool" >/dev/null || die "missing required tool: $tool"
 done
 
 [ -d "$SRC/$UUID" ] || die "run this from the repo checkout (no $UUID/ beside the script)"
 
+HAVE_GNOME=no
 if command -v gnome-shell >/dev/null; then
+    HAVE_GNOME=yes
+    command -v gsettings >/dev/null || die "missing required tool: gsettings"
     SHELL_VER=$(gnome-shell --version | grep -oE '[0-9]+' | head -1)
     SUPPORTED=$(python3 -c "
 import json,sys
@@ -37,7 +40,8 @@ print('yes' if '$SHELL_VER' in m['shell-version'] else 'no')")
         && ok "GNOME Shell $SHELL_VER (supported)" \
         || warn "GNOME Shell $SHELL_VER is not in metadata.json shell-version; it may refuse to load"
 else
-    warn "gnome-shell not found -- installing anyway"
+    warn "no GNOME Shell here -- will set up the CLI and server only"
+    warn "for COSMIC / Pop!_OS 24.04 build the applet afterwards: cd cosmic && just install"
 fi
 
 case "$(uname -m)" in
@@ -146,13 +150,26 @@ except Exception:
 for r in rows:
     u = (r.get("usage") or {}).get("primary") or {}
     if "usedPercent" in u:
-        print(f"  \033[1;32mok\033[0m {r['provider']}: {100 - u['usedPercent']}% left")
+        print(f"  \033[1;32mok\033[0m {r['provider']}: {u['usedPercent']}% used")
     else:
         msg = (r.get("error") or {}).get("message", "no data")
         print(f"  \033[1;33m!\033[0m  {r['provider']}: {msg}")
 PY
 
 # --- 4. Extension ----------------------------------------------------------
+if [ "$HAVE_GNOME" = no ]; then
+    say "Skipping the GNOME extension (no GNOME Shell)"
+    cat <<'EOF'
+
+  Done. The CodexBar CLI and usage server are installed and start at login.
+
+  On COSMIC, build and add the applet next:
+    cd cosmic && just install
+  then Settings -> Desktop -> Panel -> Configure panel applets -> Add applet -> Codenotch
+EOF
+    exit 0
+fi
+
 say "Installing the GNOME extension"
 
 # Must be gnome-shell/extensions; the shell silently ignores gnome-extensions/.

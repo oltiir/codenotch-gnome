@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Codenotch
+Comment=Claude Code and Codex usage limits in the panel
+Type=Application
+Icon=com.github.oltiir.Codenotch
+Exec=codenotch-cosmic
+Terminal=false
+StartupNotify=false
+NoDisplay=true
+Categories=COSMIC;
+Keywords=COSMIC;usage;limits;claude;codex;
+X-CosmicApplet=true
+X-CosmicHoverPopup=Auto

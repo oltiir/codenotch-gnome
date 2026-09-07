@@ -1,0 +1,47 @@
+name := 'codenotch-cosmic'
+appid := 'com.github.oltiir.Codenotch'
+
+# Per-user by default. `just prefix=/usr rootdir=/some/pkgroot install` for packaging.
+rootdir := ''
+prefix := env('HOME') / '.local'
+base-dir := absolute_path(clean(rootdir / prefix))
+
+cargo-target-dir := env('CARGO_TARGET_DIR', 'target')
+bin-src := cargo-target-dir / 'release' / name
+bin-dst := base-dir / 'bin' / name
+desktop-dst := base-dir / 'share' / 'applications' / appid + '.desktop'
+icon-dst := base-dir / 'share' / 'icons' / 'hicolor' / 'scalable' / 'apps' / appid + '.svg'
+
+default: build-release
+
+build-debug *args:
+    cargo build {{args}}
+
+build-release *args: (build-debug '--release' args)
+
+check *args:
+    cargo clippy --all-features {{args}} -- -W clippy::pedantic
+
+test *args:
+    cargo test {{args}}
+
+# Run outside the panel, for a quick look. Needs a running COSMIC session.
+run *args:
+    env RUST_BACKTRACE=full cargo run --release {{args}}
+
+# Installs the binary, the applet .desktop entry (with an absolute Exec so the
+# panel finds it regardless of PATH), and the icon.
+install: build-release
+    install -Dm0755 {{bin-src}} {{bin-dst}}
+    install -Dm0644 resources/{{appid}}.desktop {{desktop-dst}}
+    sed -i 's|^Exec=.*|Exec={{bin-dst}}|' {{desktop-dst}}
+    install -Dm0644 resources/icon.svg {{icon-dst}}
+    @echo
+    @echo "Installed. Add it to the panel:"
+    @echo "  Settings -> Desktop -> Panel -> Configure panel applets -> Add applet -> Codenotch"
+
+uninstall:
+    rm -f {{bin-dst}} {{desktop-dst}} {{icon-dst}}
+
+clean:
+    cargo clean

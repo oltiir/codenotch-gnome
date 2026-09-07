@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Two concentric dials, drawn the way the applet draws them: outer = session, inner = weekly. -->
+  <circle cx="32" cy="32" r="26" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="6"/>
+  <path d="M32 6 A26 26 0 1 1 6.47 38.3" fill="none" stroke="#57e389" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="16" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="4"/>
+  <path d="M32 16 A16 16 0 0 1 47.2 27.2" fill="none" stroke="#57e389" stroke-opacity="0.6" stroke-width="4" stroke-linecap="round"/>
+  <text x="32" y="36.5" font-family="sans-serif" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">✱</text>
+</svg>
