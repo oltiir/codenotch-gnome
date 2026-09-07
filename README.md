@@ -68,8 +68,8 @@ After logging back in:
 gnome-extensions info codenotch@oltiir.github.io    # want: State: ACTIVE
 ```
 
-If the panel shows **⚠**, the extension can't reach the server — that's a data
-problem, not an extension problem:
+If the panel shows **—** and the notch a grey dial marked *offline*, the
+extension can't reach the server — a data problem, not an extension problem:
 
 ```sh
 systemctl --user status codexbar-serve
