@@ -24,6 +24,10 @@ The extension makes no network calls and never touches your credentials. It
 reads JSON over localhost from a [CodexBar](https://github.com/steipete/CodexBar)
 `serve` process, which owns all provider auth and caching.
 
+Not on GNOME? There's a native applet for COSMIC in [`cosmic/`](cosmic/) and a
+waybar module for Hyprland in [`waybar/`](waybar/), both reading the same local
+server. See the sections below.
+
 ## Setup
 
 ```sh
@@ -99,6 +103,31 @@ checkout. Dependencies, configuration and troubleshooting are in
 
 Pop!_OS 22.04 (GNOME Shell 42) is out of reach for both: the extension needs
 Shell 45+, and 22.04 has no COSMIC panel.
+
+## Omarchy / Hyprland (waybar)
+
+Waybar has no JavaScript extension system either, so there's a **waybar
+module** in [`waybar/`](waybar/): the same numbers and the same 70/90
+thresholds, drawn in the idiom of the stock `CPU` / `MEM` / `VOL` modules
+rather than as dials, since a waybar tooltip is pango markup and can't hold
+Cairo rings.
+
+```
+AI ██░░░░░░░░ 23%   MEM ████░░░░░░ 41%   CPU ██░░░░░░░░ 18%
+```
+
+The root `install.sh` handles the CLI and the server on any Linux, then:
+
+```sh
+cd waybar && ./install-waybar.sh
+```
+
+It wires `custom/codenotch` into your existing bar by parsing the config, so
+your own modules and comments survive, and it restarts waybar in place -- no
+logout. Hovering gives the claude.ai-style breakdown; clicking opens it in a
+floating terminal. Configuration, the reason it runs continuously rather than
+on a waybar `interval`, and the tests are in
+[`waybar/README.md`](waybar/README.md).
 
 ## Configuration
 

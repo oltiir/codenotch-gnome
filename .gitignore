@@ -2,3 +2,5 @@
 *.tar.gz
 .DS_Store
 cosmic/target/
+__pycache__/
+*.pyc
