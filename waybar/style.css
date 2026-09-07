@@ -1,14 +1,16 @@
-/* Codenotch: usage quota in the waybar. Appended by install-waybar.sh.
+/* Codenotch: usage quota in the waybar, one module per provider. Appended by
+ * install-waybar.sh.
  *
- * The gauge carries its colour inline as pango markup, since a percentage
- * can't be expressed in CSS; these rules colour the label and the figure so
- * the whole module moves together as the quota fills.
+ * The colours are not here. A module says two things -- which provider it is,
+ * and how close to the limit it is -- and the second one is a percentage,
+ * which CSS cannot express. So every colour is inline pango markup, decided in
+ * the script, and the stylesheet keeps only what is genuinely CSS's: spacing.
  *
- * Rose Pine Moon's pine: the base variant's #31748f reads at 3.4:1 on @base,
- * as dim as the muted grey. Keep this in step with COLOURS in the script. */
-@define-color codenotch #3e8fb0;
+ * The `class` each module reports (ok / warn / critical / stale) is still
+ * there to hook, if you want a background or a border to follow the quota. */
 
-#custom-codenotch { padding: 0 8px; color: @codenotch; }
-#custom-codenotch.warn { color: @gold; }
-#custom-codenotch.critical { color: @love; }
-#custom-codenotch.stale { color: @muted; }
+#custom-codenotch-claude,
+#custom-codenotch-codex,
+#custom-codenotch-cursor,
+#custom-codenotch-copilot,
+#custom-codenotch-gemini { padding: 0 8px; }

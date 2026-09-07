@@ -4,7 +4,7 @@ the module shows. Pango markup is the tooltip's language, not a terminal's."""
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from support import claude_entry, load
+from support import claude_entry, fixture, load
 
 cn = load()
 
@@ -41,6 +41,41 @@ class PlainText(unittest.TestCase):
         self.assertIn("Codenotch offline", out)
         self.assertIn("Connection refused", out)
         self.assertIn("codexbar-serve", out)
+
+
+class Headline(unittest.TestCase):
+    def test_it_carries_the_same_label_the_module_shows(self):
+        for pid, label in (("claude", "CC"), ("codex", "CDX")):
+            with self.subTest(provider=pid):
+                out = cn.render(fixture("live.json"), NOW, pid)
+                self.assertTrue(cn.plain_text(out).startswith(label + " "))
+
+    def test_the_combined_reading_is_still_headed_AI(self):
+        out = cn.render(fixture("live.json"), NOW)
+        self.assertTrue(cn.plain_text(out).startswith("AI "))
+
+    def test_a_module_with_no_reading_is_headed_with_a_dash(self):
+        out = cn.render([], NOW, "codex")
+        self.assertTrue(cn.plain_text(out).startswith("CDX —"))
+
+
+class OneColumnInTheTerminal(unittest.TestCase):
+    """The tooltip lays two providers side by side to stay short. A terminal
+    doesn't mind height, so `--print` stacks them and abbreviates nothing."""
+
+    def payload(self):
+        return cn.render(fixture("live.json"), NOW)
+
+    def test_providers_stack_rather_than_sitting_side_by_side(self):
+        for line in cn.plain_text(self.payload()).splitlines():
+            with self.subTest(line=line):
+                self.assertLessEqual(line.count("█") + line.count("░"), cn.CELLS)
+
+    def test_nothing_is_wrapped_to_fit_a_column(self):
+        out = cn.plain_text(self.payload())
+        self.assertIn("27% in reserve | Expected 39% used | Lasts until reset", out)
+        self.assertIn("no data · Codex returned invalid data: "
+                      "codex app-server closed stdout", out)
 
 
 if __name__ == "__main__":

@@ -107,13 +107,12 @@ Shell 45+, and 22.04 has no COSMIC panel.
 ## Omarchy / Hyprland (waybar)
 
 Waybar has no JavaScript extension system either, so there's a **waybar
-module** in [`waybar/`](waybar/): the same numbers and the same 70/90
-thresholds, drawn in the idiom of the stock `CPU` / `MEM` / `VOL` modules
-rather than as dials, since a waybar tooltip is pango markup and can't hold
-Cairo rings.
+module** in [`waybar/`](waybar/) — one per provider, drawn in the idiom of the
+stock `CPU` / `MEM` / `VOL` modules rather than as dials, since a waybar
+tooltip is pango markup and can't hold Cairo rings.
 
 ```
-AI ██░░░░░░░░ 23%   MEM ████░░░░░░ 41%   CPU ██░░░░░░░░ 18%
+… BAT FULL   CC ████░░░░░░ 39%   CDX ░░░░░░░░░░ 03%
 ```
 
 The root `install.sh` handles the CLI and the server on any Linux, then:
@@ -122,12 +121,15 @@ The root `install.sh` handles the CLI and the server on any Linux, then:
 cd waybar && ./install-waybar.sh
 ```
 
-It wires `custom/codenotch` into your existing bar by parsing the config, so
-your own modules and comments survive, and it restarts waybar in place -- no
-logout. Hovering gives the claude.ai-style breakdown; clicking opens it in a
-floating terminal. Configuration, the reason it runs continuously rather than
-on a waybar `interval`, and the tests are in
-[`waybar/README.md`](waybar/README.md).
+It asks the server which providers are enabled, installs a module for each, and
+wires them into your existing bar by parsing the config, so your own modules
+and comments survive. Waybar restarts in place — no logout. Each module has its
+own tooltip, so hovering Claude shows only Claude; clicking one opens the same
+breakdown in a floating terminal.
+
+Configuration, why the modules run continuously and share one cached reading
+rather than polling on a waybar `interval`, why they land in `modules-left`,
+and the tests are in [`waybar/README.md`](waybar/README.md).
 
 ## Configuration
 

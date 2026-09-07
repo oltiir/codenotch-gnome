@@ -80,9 +80,31 @@ ok "waybar config at $CONFDIR"
 
 if ! curl -fsS --max-time 5 "localhost:$PORT/health" >/dev/null 2>&1; then
     die "nothing answering on localhost:$PORT -- run ./install.sh first (it installs
-     the CodexBar CLI and the usage server this module reads)"
+     the CodexBar CLI and the usage server these modules read)"
 fi
 ok "usage server answering on 127.0.0.1:$PORT"
+
+# One module per provider, so ask the server which ones it actually reports.
+# This call goes upstream and takes as long as the slowest provider does.
+say "Asking which providers are enabled"
+USAGE=$(curl -fsS --max-time 60 "localhost:$PORT/usage" 2>/dev/null || true)
+PROVIDERS=$(python3 - "$USAGE" <<'PY'
+import json, sys
+try:
+    rows = json.loads(sys.argv[1] or "[]")
+except ValueError:
+    rows = []
+ids = [r["provider"] for r in rows if isinstance(r, dict) and r.get("provider")]
+print(",".join(dict.fromkeys(ids)))
+PY
+)
+if [ -z "$PROVIDERS" ]; then
+    PROVIDERS=claude,codex
+    warn "the server named no providers -- installing $PROVIDERS, which will read"
+    warn "'not enabled' until you sign in and re-run this"
+else
+    ok "providers: $PROVIDERS"
+fi
 
 # --- 1. the module ---------------------------------------------------------
 say "Installing the module"
@@ -103,43 +125,60 @@ say "Wiring it into the bar"
 
 backup "$CONFIG"
 backup "$STYLE"
-python3 "$(patcher)" patch "$CONFIG" "$STYLE" "$SRC/style.css"
-ok "custom/codenotch added to modules-right, styles appended"
+# modules-left, at the tail: a full bar has its slack on the left, not beside
+# the right-hand group, where a second module has nowhere to go.
+python3 "$(patcher)" patch "$CONFIG" "$STYLE" "$SRC/style.css" "$PROVIDERS"
+ok "one module per provider added to the end of modules-left, styles appended"
 
 restart_waybar
 
 # --- 3. did it work? -------------------------------------------------------
-say "Reading the quota once, the way the bar will"
+say "Reading each quota once, the way the bar will"
 
-READING=$("$BINDIR/codenotch-waybar" --once 2>/dev/null || true)
-python3 - "$READING" <<'PY' || true
+READINGS=""
+OLD_IFS=$IFS; IFS=,
+for prov in $PROVIDERS; do
+    IFS=$OLD_IFS
+    READINGS="$READINGS$("$BINDIR/codenotch-waybar" --once --provider "$prov" 2>/dev/null || true)
+"
+    IFS=,
+done
+IFS=$OLD_IFS
+
+python3 - "$READINGS" <<'PY' || true
 import html, json, re, sys
-try:
-    p = json.loads(sys.argv[1] or "{}")
-except ValueError:
-    p = {}
-text = " ".join(re.sub(r"<[^>]+>", "", p.get("text", "")).split())
-tip = html.unescape(re.sub(r"<[^>]+>", "", p.get("tooltip", "")))
-if not text:
-    print("  \033[1;33m!\033[0m  no reading; try: codenotch-waybar --once")
-elif p.get("class") == "stale":
-    # Say why, or the grey dash is a mystery to debug later.
-    why = next((l.strip() for l in reversed(tip.splitlines()) if l.strip()), "")
-    print("  \033[1;33m!\033[0m  %s -- greyed out: %s" % (text, why))
-    print("     the module retries every couple of minutes; check the server with")
-    print("     systemctl --user status codexbar-serve")
-else:
-    print("  \033[1;32mok\033[0m %s" % text)
+stale = False
+for line in (sys.argv[1] or "").splitlines():
+    if not line.strip():
+        continue
+    try:
+        p = json.loads(line)
+    except ValueError:
+        continue
+    text = " ".join(re.sub(r"<[^>]+>", "", p.get("text", "")).split())
+    tip = html.unescape(re.sub(r"<[^>]+>", "", p.get("tooltip", "")))
+    if not text:
+        print("  \033[1;33m!\033[0m  no reading")
+    elif p.get("class") == "stale":
+        # Say why, or the grey dash is a mystery to debug later.
+        why = next((l.strip() for l in reversed(tip.splitlines()) if l.strip()), "")
+        print("  \033[1;33m!\033[0m  %s -- greyed out: %s" % (text, why))
+        stale = True
+    else:
+        print("  \033[1;32mok\033[0m %s" % text)
+if stale:
+    print("     a greyed module retries every couple of minutes; check the server")
+    print("     with: systemctl --user status codexbar-serve")
 PY
 
 cat <<'MSG'
 
   Done -- no logout needed, unlike the GNOME extension.
 
-  Click the module for the full breakdown in a floating terminal. To see what
-  the bar is being fed:
-    codenotch-waybar --once     # the raw waybar JSON
-    codenotch-waybar --print    # the same reading as plain text
+  Each module has its own tooltip -- hover Claude, get only Claude. Click one
+  for its full breakdown in a floating terminal. To see what the bar is fed:
+    codenotch-waybar --once --provider claude    # the raw waybar JSON
+    codenotch-waybar --print --provider claude   # the same, as plain text
 
   Uninstall with ./install-waybar.sh --uninstall
 MSG

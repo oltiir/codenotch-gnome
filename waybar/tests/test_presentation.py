@@ -116,7 +116,7 @@ class ClockText(unittest.TestCase):
 class ResetLine(unittest.TestCase):
     def test_the_countdown_and_the_wall_clock_sit_side_by_side(self):
         self.assertEqual(cn.reset_line("2026-09-07T20:10:00Z", NOW),
-                         "Resets in 4 min  ·  22:10")
+                         "Resets in 4 min · 22:10")
 
     def test_a_window_at_its_reset_reads_resetting(self):
         self.assertEqual(cn.reset_line(NOW.isoformat(), NOW), "Resetting")

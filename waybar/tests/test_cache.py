@@ -1,5 +1,6 @@
-"""The last good payload is kept on disk so a freshly started bar paints the
-numbers at once instead of sitting empty through a ~10s fetch."""
+"""The last reading is kept on disk so a freshly started bar paints the numbers
+at once instead of sitting empty through a ~10s fetch -- and so a second
+provider's module reads it instead of fetching again."""
 
 import json
 import os
@@ -32,9 +33,11 @@ class CacheRoundTrip(unittest.TestCase):
         os.environ["XDG_RUNTIME_DIR"] = self.dir.name
         self.addCleanup(lambda: os.environ.pop("XDG_RUNTIME_DIR", None))
 
-    def test_a_saved_payload_comes_back(self):
-        cn.save_cache({"text": "AI 12%", "class": "ok"})
-        self.assertEqual(cn.load_cache()["text"], "AI 12%")
+    def test_a_saved_reading_comes_back(self):
+        cn.save_cache(cn.cache_entry([{"provider": "claude"}], now=99.0))
+        got = cn.load_cache()
+        self.assertEqual(got["usage"], [{"provider": "claude"}])
+        self.assertEqual(got["at"], 99.0)
 
     def test_nothing_saved_yet_reads_as_nothing_cached(self):
         self.assertIsNone(cn.load_cache())
@@ -44,14 +47,14 @@ class CacheRoundTrip(unittest.TestCase):
             f.write("{ truncated")
         self.assertIsNone(cn.load_cache())
 
-    def test_a_cache_that_is_not_a_payload_is_ignored(self):
+    def test_a_cache_that_is_not_a_reading_is_ignored(self):
         with open(cn.cache_path(), "w") as f:
             json.dump(["not", "a", "payload"], f)
         self.assertIsNone(cn.load_cache())
 
     def test_saving_over_an_unwritable_cache_does_not_crash_the_bar(self):
         os.environ["XDG_RUNTIME_DIR"] = "/proc/nonexistent-for-codenotch"
-        cn.save_cache({"text": "AI 12%"})  # must not raise
+        cn.save_cache(cn.cache_entry([], now=1.0))  # must not raise
 
 
 if __name__ == "__main__":
