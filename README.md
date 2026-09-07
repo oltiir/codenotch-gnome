@@ -83,13 +83,18 @@ has no JavaScript extension system. So there's a native **COSMIC applet** in
 [`cosmic/`](cosmic/) instead: same dials, same claude.ai-style details, same
 70/90 colours, reading the same local server.
 
+No Rust toolchain needed: every [release](https://github.com/oltiir/codenotch-gnome/releases/latest)
+carries `codenotch-cosmic-linux-x86_64.tar.gz`, built on Ubuntu 24.04 so it
+runs on Pop!_OS 24.04. Extract it and run the two scripts inside:
+
 ```sh
-./install.sh                 # CLI + server; skips the GNOME extension when there's no GNOME Shell
-cd cosmic && just install    # builds and installs the applet per-user, no sudo
+./install.sh            # CLI + server; skips the GNOME extension when there's no GNOME Shell
+./install-applet.sh     # the applet, per-user, no sudo
 ```
 
 Then **Settings → Desktop → Panel → Configure panel applets → Add applet →
-Codenotch**. Build dependencies, configuration and troubleshooting are in
+Codenotch**. To build from source instead, `cd cosmic && just install` from a
+checkout. Dependencies, configuration and troubleshooting are in
 [`cosmic/README.md`](cosmic/README.md).
 
 Pop!_OS 22.04 (GNOME Shell 42) is out of reach for both: the extension needs

@@ -1,0 +1,73 @@
+# Builds the COSMIC applet on Ubuntu 24.04 -- the base of Pop!_OS 24.04 -- so the
+# binary links against a glibc that Pop!_OS actually has. On a tag it attaches
+# a tarball to the release: binary + desktop entry + icon + install-applet.sh.
+name: cosmic-applet
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: cosmic
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries libcosmic links against
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential pkg-config \
+            libxkbcommon-dev libwayland-dev libfontconfig-dev libfreetype-dev libexpat1-dev
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cosmic
+
+      - name: Test
+        run: cargo test --release --locked
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Package
+        id: pkg
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          case "$GITHUB_REF" in refs/tags/*) ;; *) TAG="main-${GITHUB_SHA::7}" ;; esac
+          NAME="codenotch-cosmic-${TAG}"
+          ASSET="codenotch-cosmic-linux-x86_64"   # stable name: releases/latest/download/ works
+          mkdir -p "dist/$NAME"
+          cp target/release/codenotch-cosmic "dist/$NAME/"
+          cp resources/com.github.oltiir.Codenotch.desktop resources/icon.svg install-applet.sh "dist/$NAME/"
+          cp ../install.sh "dist/$NAME/install.sh"
+          mkdir -p "dist/$NAME/systemd" && cp ../systemd/codexbar-serve.service "dist/$NAME/systemd/"
+          tar -C dist -czf "dist/$ASSET.tar.gz" "$NAME"
+          ( cd dist && sha256sum "$ASSET.tar.gz" > "$ASSET.tar.gz.sha256" )
+          echo "glibc needed: $(objdump -T target/release/codenotch-cosmic | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -1)"
+          echo "name=$ASSET-$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pkg.outputs.name }}
+          path: |
+            cosmic/dist/*.tar.gz
+            cosmic/dist/*.sha256
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 --clobber

@@ -29,7 +29,28 @@ yellow from 70%, red from 90%. Hovering the panel item opens the popup
 The applet makes no network calls beyond loopback and never touches provider
 credentials. [CodexBar](https://github.com/steipete/CodexBar) owns all of that.
 
-## Setup
+## Install the prebuilt binary
+
+Every release carries `codenotch-cosmic-linux-x86_64.tar.gz`, built by CI on
+Ubuntu 24.04 -- the base of Pop!_OS 24.04 -- so it links against a glibc that
+Pop!_OS actually has. No Rust toolchain, no sudo. Claude Code must already be
+logged in on the machine.
+
+```sh
+cd ~/Downloads
+curl -fsSLO https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-cosmic-linux-x86_64.tar.gz
+curl -fsSLO https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-cosmic-linux-x86_64.tar.gz.sha256
+sha256sum -c codenotch-cosmic-linux-x86_64.tar.gz.sha256
+tar -xzf codenotch-cosmic-linux-x86_64.tar.gz
+cd codenotch-cosmic-*/
+./install.sh            # CodexBar CLI + codexbar-serve user service (skips the GNOME extension)
+./install-applet.sh     # binary, desktop entry and icon into ~/.local
+```
+
+Then **Settings → Desktop → Panel → Configure panel applets → Add applet →
+Codenotch**.
+
+## Build from source
 
 **1. The data side.** From the repo root, the same installer as GNOME. On a
 machine without GNOME Shell it installs the CodexBar CLI and the
@@ -54,8 +75,8 @@ sudo dnf install cargo rust just libxkbcommon-devel wayland-devel \
     fontconfig-devel freetype-devel expat-devel
 ```
 
-Rust 1.85 or newer (the crate is edition 2024). If your distro's Rust is older,
-use [rustup](https://rustup.rs).
+Rust 1.85 or newer (the crate is edition 2024). Ubuntu 24.04's packaged Rust is
+1.75, so use [rustup](https://rustup.rs) there.
 
 **3. Build and install.** Per-user, no sudo:
 
@@ -66,7 +87,8 @@ just install
 
 This builds `--release`, installs the binary to `~/.local/bin`, the applet
 desktop entry to `~/.local/share/applications` with an absolute `Exec=` so the
-panel finds it regardless of `PATH`, and the icon.
+panel finds it regardless of `PATH`, and the icon. `install-applet.sh` does the
+same from an already-built binary.
 
 **4. Add it to the panel.** Settings → Desktop → Panel → Configure panel
 applets → Add applet → **Codenotch**.
@@ -105,7 +127,7 @@ the applet in Settings.
 ## Uninstall
 
 ```sh
-just uninstall
+just uninstall     # from a checkout; or remove the three files install-applet.sh listed
 ```
 
 Remove it from the panel in Settings first, or the panel will log a failed
@@ -125,12 +147,13 @@ agreement about what a window is called and when it turns yellow.
 ## Layout
 
 ```
-src/main.rs     entry point: cosmic::applet::run
-src/app.rs      the applet: panel item, popup, fetch scheduling
-src/draw.rs     canvas programs for the dials and bars
-src/usage.rs    HTTP fetch, JSON parsing, window model, thresholds
-resources/      applet desktop entry and icon
-justfile        build / install / uninstall
+src/main.rs         entry point: cosmic::applet::run
+src/app.rs          the applet: panel item, popup, fetch scheduling
+src/draw.rs         canvas programs for the dials and bars
+src/usage.rs        HTTP fetch, JSON parsing, window model, thresholds
+resources/          applet desktop entry and icon
+justfile            build / install / uninstall from source
+install-applet.sh   install a prebuilt binary (what the release tarball runs)
 ```
 
 MIT licensed, like the rest of the repo.

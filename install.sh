@@ -25,12 +25,12 @@ for tool in curl tar python3 systemctl; do
     command -v "$tool" >/dev/null || die "missing required tool: $tool"
 done
 
-[ -d "$SRC/$UUID" ] || die "run this from the repo checkout (no $UUID/ beside the script)"
-
 HAVE_GNOME=no
 if command -v gnome-shell >/dev/null; then
     HAVE_GNOME=yes
     command -v gsettings >/dev/null || die "missing required tool: gsettings"
+    # The COSMIC release tarball ships this script without the extension.
+    [ -d "$SRC/$UUID" ] || die "no $UUID/ beside the script -- run this from the repo checkout on GNOME"
     SHELL_VER=$(gnome-shell --version | grep -oE '[0-9]+' | head -1)
     SUPPORTED=$(python3 -c "
 import json,sys
@@ -41,7 +41,7 @@ print('yes' if '$SHELL_VER' in m['shell-version'] else 'no')")
         || warn "GNOME Shell $SHELL_VER is not in metadata.json shell-version; it may refuse to load"
 else
     warn "no GNOME Shell here -- will set up the CLI and server only"
-    warn "for COSMIC / Pop!_OS 24.04 build the applet afterwards: cd cosmic && just install"
+    warn "for COSMIC / Pop!_OS 24.04 install the applet afterwards (see below)"
 fi
 
 case "$(uname -m)" in
@@ -163,7 +163,9 @@ if [ "$HAVE_GNOME" = no ]; then
 
   Done. The CodexBar CLI and usage server are installed and start at login.
 
-  On COSMIC, build and add the applet next:
+  On COSMIC, install the applet next -- prebuilt from a release tarball:
+    ./install-applet.sh
+  or built from the repo checkout:
     cd cosmic && just install
   then Settings -> Desktop -> Panel -> Configure panel applets -> Add applet -> Codenotch
 EOF

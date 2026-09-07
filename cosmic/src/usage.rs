@@ -101,6 +101,9 @@ impl Window {
 
 #[derive(Debug, Clone)]
 pub struct Provider {
+    /// CodexBar's provider id ("claude", "codex"). Not shown in the UI; kept
+    /// for logging and tests.
+    #[allow(dead_code)]
     pub id: String,
     pub name: String,
     pub glyph: &'static str,
