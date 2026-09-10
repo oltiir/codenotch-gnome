@@ -1,0 +1,52 @@
+<Window x:Class="Codenotch.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Codenotch settings"
+        Width="460"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True"
+        WindowStartupLocation="CenterScreen"
+        Icon="Assets/Codenotch.ico">
+
+  <StackPanel Margin="20,16,20,16">
+
+    <TextBlock Text="Polling" FontWeight="Bold" Margin="0,0,0,6" />
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+      <TextBlock Text="Poll interval" VerticalAlignment="Center" Width="140" />
+      <TextBox x:Name="PollBox" Width="80" />
+      <TextBlock Text="seconds (10–3600)" VerticalAlignment="Center" Margin="8,0,0,0" />
+    </StackPanel>
+
+    <TextBlock Text="Source" FontWeight="Bold" Margin="0,14,0,6" />
+    <CheckBox x:Name="EndpointCheck" Content="Read from a codexbar serve endpoint" Margin="0,0,0,6" />
+    <TextBox x:Name="EndpointBox" IsEnabled="False" Margin="0,0,0,4" />
+    <TextBlock x:Name="EndpointHint"
+               Text="http://127.0.0.1:8787/usage"
+               FontSize="11"
+               Margin="0,0,0,0" />
+
+    <TextBlock Text="Providers" FontWeight="Bold" Margin="0,14,0,6" />
+    <CheckBox x:Name="AutoProvidersCheck" Content="Automatic (whichever CLIs are signed in)" Margin="0,0,0,6" />
+    <StackPanel Orientation="Horizontal">
+      <CheckBox x:Name="ClaudeCheck" Content="Claude" Margin="0,0,16,0" />
+      <CheckBox x:Name="CodexCheck" Content="Codex" />
+    </StackPanel>
+
+    <TextBlock Text="Surfaces" FontWeight="Bold" Margin="0,14,0,6" />
+    <CheckBox x:Name="NotchCheck" Content="Show the edge notch" Margin="0,0,0,6" />
+    <CheckBox x:Name="PercentCheck" Content="Show percent in the tray instead of the dial" Margin="0,0,0,6" />
+    <CheckBox x:Name="NotifyCheck" Content="Notify at 70% and 90%" Margin="0,0,0,6" />
+    <CheckBox x:Name="StartupCheck" Content="Start with Windows" />
+
+    <TextBlock x:Name="ErrorText" Foreground="#FFCF222E" FontSize="11" Margin="0,12,0,0"
+               TextWrapping="Wrap" Visibility="Collapsed" />
+
+    <TextBlock x:Name="PathText" FontSize="11" Margin="0,14,0,0" TextWrapping="Wrap" />
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+      <Button x:Name="SaveButton" Content="Save" IsDefault="True" MinWidth="88" Padding="10,4" />
+      <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" MinWidth="88" Padding="10,4" Margin="8,0,0,0" />
+    </StackPanel>
+  </StackPanel>
+</Window>

@@ -1,0 +1,9 @@
+<UserControl x:Class="Codenotch.App.Controls.ProviderDetail"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- One provider's block, laid out like claude.ai's usage panel: the window name
+       with its reset time stacked underneath on the left, a bar in the middle,
+       "NN% used" on the right, and a "Weekly limits" divider before the weekly
+       rows. Rows are built in code from the reading, so this is just the host. -->
+  <StackPanel x:Name="Root" />
+</UserControl>

@@ -1,0 +1,16 @@
+<Application x:Class="Codenotch.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ThemeMode="System"
+             ShutdownMode="OnExplicitShutdown">
+  <!-- No StartupUri: the app has no main window, only a tray icon and the surfaces
+       it opens. ThemeMode="System" gives the Fluent controls the Windows 11 look
+       and follows light/dark; the usage tones in Palette.xaml are ours to swap. -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Theme/Palette.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

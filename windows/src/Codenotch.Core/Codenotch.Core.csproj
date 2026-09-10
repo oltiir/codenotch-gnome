@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ClockText formats day names; globalization data must be present. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <RootNamespace>Codenotch.Core</RootNamespace>
+    <AssemblyName>Codenotch.Core</AssemblyName>
+  </PropertyGroup>
+
+  <!-- No PackageReference at all: System.Text.Json ships in the shared framework. -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Codenotch.Core.Tests" />
+  </ItemGroup>
+
+</Project>

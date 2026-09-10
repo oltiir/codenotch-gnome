@@ -4,3 +4,7 @@
 cosmic/target/
 __pycache__/
 *.pyc
+windows/**/bin/
+windows/**/obj/
+windows/.vs/
+*.user

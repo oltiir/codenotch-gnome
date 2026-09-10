@@ -1,0 +1,86 @@
+# Builds the Windows 11 tray app on windows-latest. Single-file, self-contained,
+# untrimmed (WPF is not trim-safe), so it runs with no .NET install. On a tag it
+# attaches one zip per architecture to the release: exe + install.ps1 + README.
+name: windows-app
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: windows
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            asset: codenotch-windows-x64
+          - rid: win-arm64
+            asset: codenotch-windows-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # A solution restore covers the test project. The publish below needs a
+      # RID-specific restore for the WindowsDesktop runtime pack, so it runs its own
+      # (no step passes --no-restore: each one restores exactly what it uses).
+      - name: Restore
+        run: dotnet restore Codenotch.sln
+
+      - name: Test                       # Core only; it has no Windows dependencies
+        if: matrix.rid == 'win-x64'      # the tests are RID-independent, run them once
+        run: dotnet test tests/Codenotch.Core.Tests --configuration Release --verbosity minimal
+
+      - name: Publish
+        run: >
+          dotnet publish src/Codenotch.App --configuration Release --runtime ${{ matrix.rid }}
+          --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false
+          --output publish/${{ matrix.rid }}
+
+      - name: Package
+        id: pkg
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = if ($env:GITHUB_REF -like 'refs/tags/*') { $env:GITHUB_REF_NAME }
+                 else { "main-$($env:GITHUB_SHA.Substring(0,7))" }
+          $asset = '${{ matrix.asset }}'            # stable name: releases/latest/download/ works
+          New-Item -ItemType Directory -Force dist/$asset | Out-Null
+          Copy-Item publish/${{ matrix.rid }}/Codenotch.exe dist/$asset/
+          Copy-Item install.ps1, README.md dist/$asset/
+          # -Path with a trailing \* puts exe + install.ps1 + README at the zip root.
+          Compress-Archive -Path dist/$asset/* -DestinationPath dist/$asset.zip -Force
+          (Get-FileHash dist/$asset.zip -Algorithm SHA256).Hash.ToLower() + "  $asset.zip" |
+            Set-Content dist/$asset.zip.sha256 -NoNewline -Encoding utf8
+          "name=$asset-$tag" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pkg.outputs.name }}
+          path: |                        # upload-artifact paths are repo-relative
+            windows/dist/*.zip
+            windows/dist/*.sha256
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # pwsh does not glob-expand arguments to native commands, so gh would
+          # receive the literal "dist/*.zip". Expand it here instead.
+          $files = @(Get-ChildItem -Path dist/*.zip, dist/*.sha256 | ForEach-Object { $_.FullName })
+          gh release upload "$env:GITHUB_REF_NAME" @files --clobber

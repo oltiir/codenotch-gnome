@@ -1,0 +1,20 @@
+<Project>
+
+  <!-- Shared by every project under windows/. Kept deliberately small: the two shipping
+       projects differ only in target framework and the WPF/WinForms switches. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Version>0.1.0</Version>
+    <Authors>oltiir</Authors>
+    <Company>oltiir</Company>
+    <Product>Codenotch</Product>
+    <RepositoryUrl>https://github.com/oltiir/codenotch-gnome</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <NeutralLanguage>en</NeutralLanguage>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

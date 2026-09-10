@@ -24,9 +24,9 @@ The extension makes no network calls and never touches your credentials. It
 reads JSON over localhost from a [CodexBar](https://github.com/steipete/CodexBar)
 `serve` process, which owns all provider auth and caching.
 
-Not on GNOME? There's a native applet for COSMIC in [`cosmic/`](cosmic/) and a
-waybar module for Hyprland in [`waybar/`](waybar/), both reading the same local
-server. See the sections below.
+Not on GNOME? There's a native applet for COSMIC in [`cosmic/`](cosmic/), a
+waybar module for Hyprland in [`waybar/`](waybar/), and a tray app for
+**Windows 11** in [`windows/`](windows/). See the sections below.
 
 ## Setup
 
@@ -128,6 +128,50 @@ logout. Hovering gives the claude.ai-style breakdown; clicking opens it in a
 floating terminal. Configuration, the reason it runs continuously rather than
 on a waybar `interval`, and the tests are in
 [`waybar/README.md`](waybar/README.md).
+
+## Windows 11
+
+CodexBar is Swift and ships no Windows binary, so there's a native **tray
+app** in [`windows/`](windows/) instead: it talks to Claude and Codex
+directly and normalizes the responses into the same JSON shape `codexbar
+serve` emits, so it shares one presentation path with the other three ports
+-- same dials, same claude.ai-style details, same 70/90 colours.
+
+Three surfaces: a tray icon with the mini dial (or the percent as tabular
+digits); a flyout, opened from the tray, with the full per-provider
+breakdown; and an edge notch pinned to the right of the primary monitor,
+like the GNOME one, with a hover callout.
+
+In PowerShell, nothing to download by hand:
+
+```powershell
+cd ~\Downloads
+irm https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip -OutFile codenotch.zip
+Expand-Archive codenotch.zip -DestinationPath codenotch -Force
+.\codenotch\install.ps1
+```
+
+That installs it per-user, so no admin and no .NET on the machine. It starts
+Codenotch right away and again at every login, and it turns up as a dial in
+the notification area beside the clock. Claude Code and/or Codex have to be
+signed in on this machine already — that's where the numbers come from.
+
+The exe is unsigned. If PowerShell refuses to run the script, use `powershell
+-ExecutionPolicy Bypass -File .\codenotch\install.ps1`; if SmartScreen says
+**Windows protected your PC**, choose *More info → Run anyway*. The `.sha256`
+next to the zip on the release page is how to check the download first. ARM64
+laptops want `codenotch-windows-arm64.zip` instead.
+
+One difference worth knowing: because CodexBar has no Windows build, the
+Windows app reads the credential files Claude Code and Codex already wrote
+on this machine and sends them only to those vendors' own endpoints -- it
+stores nothing and adds no telemetry, but this is not the "never touches
+credentials" model the other three ports use. Set `endpoint` in its settings
+to point it at a local `codexbar serve` instead (handy from WSL) and it goes
+back to that model.
+
+See [`windows/README.md`](windows/README.md) for configuration and
+troubleshooting.
 
 ## Configuration
 
