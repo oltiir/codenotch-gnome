@@ -115,19 +115,33 @@ jobs:
           $errorLog  = Join-Path $settings 'error.log'
           if (Test-Path -LiteralPath $errorLog) { Remove-Item -LiteralPath $errorLog -Force }
 
-          # Why install.ps1 reads $PSScriptRoot in its body and not in a parameter
-          # default. Printed, not asserted: it is a fact about the shell.
-          $probe = Join-Path $stage 'probe.ps1'
-          $probeBody = @'
-          param([string]$Source = $PSScriptRoot)
-          Write-Host "  parameter default -Source = '$Source'"
-          Write-Host "  script body PSScriptRoot  = '$PSScriptRoot'"
+          # Why install.ps1 reads $PSScriptRoot in its body rather than as a
+          # parameter default. Printed, not asserted: it is a fact about the shell,
+          # and the two probes differ only in [CmdletBinding()].
+          $plain = @'
+          param([switch]$NoStart, [string]$Source = $PSScriptRoot)
+          Write-Host "  plain param default -Source         = '$Source'"
+          Write-Host "  plain script body PSScriptRoot      = '$PSScriptRoot'"
           '@
-          $probeBody | Set-Content -LiteralPath $probe -Encoding ascii
+          $advanced = @'
+          [CmdletBinding()]
+          param([switch]$NoStart, [string]$Source = $PSScriptRoot)
+          Write-Host "  CmdletBinding param default -Source = '$Source'"
+          Write-Host "  CmdletBinding body PSScriptRoot     = '$PSScriptRoot'"
+          '@
           Write-Host '--- what 5.1 hands a -File script'
           Push-Location $env:TEMP
-          try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe } finally { Pop-Location }
-          Remove-Item -LiteralPath $probe -Force
+          try {
+              foreach ($probe in @(@{ Name = 'probe-plain.ps1'; Body = $plain },
+                                   @{ Name = 'probe-advanced.ps1'; Body = $advanced })) {
+                  $path = Join-Path $stage $probe.Name
+                  $probe.Body | Set-Content -LiteralPath $path -Encoding ascii
+                  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path -NoStart
+                  Remove-Item -LiteralPath $path -Force
+              }
+          } finally {
+              Pop-Location
+          }
 
           Write-Host '--- install.ps1 -File, from another working directory'
           Push-Location $env:TEMP
