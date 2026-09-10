@@ -33,27 +33,44 @@ that means in practice.
 
 ## Install the prebuilt exe
 
-Every [release](https://github.com/oltiir/codenotch-gnome/releases/latest)
-carries `codenotch-windows-x64.zip` (and an `-arm64` build). Claude Code
-and/or Codex should already be signed in on this machine.
+Paste this into PowerShell. It downloads the latest
+[release](https://github.com/oltiir/codenotch-gnome/releases/latest) itself,
+so there's nothing to fetch by hand:
 
 ```powershell
 cd ~\Downloads
-Invoke-WebRequest https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip -OutFile codenotch-windows-x64.zip
-Invoke-WebRequest https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip.sha256 -OutFile codenotch-windows-x64.zip.sha256
-(Get-FileHash codenotch-windows-x64.zip -Algorithm SHA256).Hash.ToLower() -eq (Get-Content codenotch-windows-x64.zip.sha256).Split(' ')[0]
-Expand-Archive codenotch-windows-x64.zip -DestinationPath codenotch-windows-x64
-cd codenotch-windows-x64
-.\install.ps1
+irm https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip -OutFile codenotch.zip
+Expand-Archive codenotch.zip -DestinationPath codenotch -Force
+.\codenotch\install.ps1
 ```
 
-If your execution policy blocks the script, run it once with:
+The install is per-user: no admin, and no .NET needed on the machine. It
+starts Codenotch straight away and again at every login, and it shows up as a
+dial in the notification area beside the clock. Claude Code and/or Codex have
+to be signed in on this machine already — that's where the numbers come from.
+
+The exe is unsigned, which shows up twice. If PowerShell refuses to run the
+script, use `powershell -ExecutionPolicy Bypass -File .\codenotch\install.ps1`
+(or `Set-ExecutionPolicy -Scope Process Bypass` for the current shell). If
+SmartScreen says **Windows protected your PC**, choose *More info → Run
+anyway*; the `.sha256` next to the zip on the release page is how to check the
+download before you do.
+
+On an ARM64 laptop use `codenotch-windows-arm64.zip` instead — same two
+commands, same install.
+
+### Verifying the download by hand
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+cd ~\Downloads
+irm https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip -OutFile codenotch-windows-x64.zip
+irm https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip.sha256 -OutFile codenotch-windows-x64.zip.sha256
+(Get-FileHash codenotch-windows-x64.zip -Algorithm SHA256).Hash.ToLower() -eq (Get-Content codenotch-windows-x64.zip.sha256).Split(' ')[0]
+Expand-Archive codenotch-windows-x64.zip -DestinationPath codenotch-windows-x64
+.\codenotch-windows-x64\install.ps1
 ```
 
-or `Set-ExecutionPolicy -Scope Process Bypass` for the current shell.
+`True` from the third line means the zip is the one CI built.
 
 ## Build from source
 

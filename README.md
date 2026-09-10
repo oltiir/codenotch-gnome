@@ -142,12 +142,25 @@ digits); a flyout, opened from the tray, with the full per-provider
 breakdown; and an edge notch pinned to the right of the primary monitor,
 like the GNOME one, with a hover callout.
 
-```sh
-# download codenotch-windows-x64.zip from the latest release, then in PowerShell:
-Get-FileHash codenotch-windows-x64.zip -Algorithm SHA256   # compare against the .sha256
-Expand-Archive codenotch-windows-x64.zip -DestinationPath codenotch
+In PowerShell, nothing to download by hand:
+
+```powershell
+cd ~\Downloads
+irm https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip -OutFile codenotch.zip
+Expand-Archive codenotch.zip -DestinationPath codenotch -Force
 .\codenotch\install.ps1
 ```
+
+That installs it per-user, so no admin and no .NET on the machine. It starts
+Codenotch right away and again at every login, and it turns up as a dial in
+the notification area beside the clock. Claude Code and/or Codex have to be
+signed in on this machine already — that's where the numbers come from.
+
+The exe is unsigned. If PowerShell refuses to run the script, use `powershell
+-ExecutionPolicy Bypass -File .\codenotch\install.ps1`; if SmartScreen says
+**Windows protected your PC**, choose *More info → Run anyway*. The `.sha256`
+next to the zip on the release page is how to check the download first. ARM64
+laptops want `codenotch-windows-arm64.zip` instead.
 
 One difference worth knowing: because CodexBar has no Windows build, the
 Windows app reads the credential files Claude Code and Codex already wrote
