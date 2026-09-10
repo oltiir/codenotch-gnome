@@ -131,44 +131,39 @@ on a waybar `interval`, and the tests are in
 
 ## Windows 11
 
-CodexBar is Swift and ships no Windows binary, so there's a native **tray
-app** in [`windows/`](windows/) instead: it talks to Claude and Codex
-directly and normalizes the responses into the same JSON shape `codexbar
-serve` emits, so it shares one presentation path with the other three ports
--- same dials, same claude.ai-style details, same 70/90 colours.
+A native **tray app** in [`windows/`](windows/): a tray icon with the mini
+dial, a flyout with the full per-provider breakdown, and an edge notch pinned
+to the right of the primary monitor with a hover callout — the same dials, the
+same claude.ai-style details, the same 70/90 colours as the GNOME one.
 
-Three surfaces: a tray icon with the mini dial (or the percent as tabular
-digits); a flyout, opened from the tray, with the full per-provider
-breakdown; and an edge notch pinned to the right of the primary monitor,
-like the GNOME one, with a hover callout.
-
-In PowerShell, nothing to download by hand:
+**Install.** In any PowerShell window:
 
 ```powershell
-cd ~\Downloads
-irm https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip -OutFile codenotch.zip
-Expand-Archive codenotch.zip -DestinationPath codenotch -Force
-.\codenotch\install.ps1
+irm https://raw.githubusercontent.com/oltiir/codenotch-gnome/main/windows/get.ps1 | iex
 ```
 
-That installs it per-user, so no admin and no .NET on the machine. It starts
-Codenotch right away and again at every login, and it turns up as a dial in
-the notification area beside the clock. Claude Code and/or Codex have to be
-signed in on this machine already — that's where the numbers come from.
+That picks the build for your architecture, checks its published SHA-256 and
+installs per-user: no admin, no .NET on the machine, and nothing to do about
+the execution policy, since piping into `iex` never needed one. It starts
+Codenotch right away and again at every login, as a dial in the notification
+area beside the clock. Claude Code and/or Codex have to be signed in on this
+machine already — that's where the numbers come from.
 
-The exe is unsigned. If PowerShell refuses to run the script, use `powershell
--ExecutionPolicy Bypass -File .\codenotch\install.ps1`; if SmartScreen says
-**Windows protected your PC**, choose *More info → Run anyway*. The `.sha256`
-next to the zip on the release page is how to check the download first. ARM64
-laptops want `codenotch-windows-arm64.zip` instead.
+Prefer to see what you run? Download the zip from the
+[release page](https://github.com/oltiir/codenotch-gnome/releases/latest),
+extract it and double-click `install.cmd` — or just run `Codenotch.exe` out of
+the extracted folder to try it without installing anything.
 
-One difference worth knowing: because CodexBar has no Windows build, the
-Windows app reads the credential files Claude Code and Codex already wrote
-on this machine and sends them only to those vendors' own endpoints -- it
-stores nothing and adds no telemetry, but this is not the "never touches
-credentials" model the other three ports use. Set `endpoint` in its settings
-to point it at a local `codexbar serve` instead (handy from WSL) and it goes
-back to that model.
+The exe is unsigned, so on first run SmartScreen may say **Windows protected
+your PC**: choose *More info → Run anyway*. The `.sha256` next to the zip on
+the release page is how to check the download before that.
+
+One difference worth knowing: because CodexBar is Swift and has no Windows
+build, this port reads the credential files Claude Code and Codex already
+wrote and sends them only to those vendors' own endpoints. It stores nothing
+and adds no telemetry, but this is not the "never touches credentials" model
+the other three ports use; set `endpoint` in its settings to a local `codexbar
+serve` (handy from WSL) and it goes back to that model.
 
 See [`windows/README.md`](windows/README.md) for configuration and
 troubleshooting.

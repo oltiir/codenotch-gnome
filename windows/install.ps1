@@ -15,7 +15,7 @@ param(
     [switch]$Purge,
     [switch]$NoStart,
     [switch]$NoRunKey,
-    [string]$Source = $PSScriptRoot,
+    [string]$Source,
     [string]$Destination = "$env:LOCALAPPDATA\Programs\Codenotch"
 )
 
@@ -27,8 +27,18 @@ function Ok   { param($m) Write-Host "  ok " -ForegroundColor Green -NoNewline; 
 function Warn { param($m) Write-Host "  !  " -ForegroundColor Yellow -NoNewline; Write-Host $m }
 function Die  { param($m) Write-Host "x  " -ForegroundColor Red -NoNewline; Write-Host $m; exit 1 }
 
-# $PSScriptRoot is empty when the script is piped into powershell rather than run
-# as a file; Join-Path would then throw on an empty -Path.
+# Without -Source, install from the directory holding this script, which is the
+# extracted zip. $PSScriptRoot has to be read here, in the body, and not as the
+# default value of the parameter: [CmdletBinding()] above makes this an advanced
+# script, and an advanced script evaluates its parameter defaults in the caller's
+# scope, where $PSScriptRoot is empty. It bound $Source to "" that way, the
+# fall-back below then pointed at the caller's working directory, and the install
+# failed with "Codenotch.exe not found" -- get.ps1 and install.cmd both run this
+# script with -File and no -Source, so that was the common path. (The CI smoke
+# test prints both forms.) $PSScriptRoot is genuinely empty for a script piped
+# into powershell rather than run as a file, and then the working directory is
+# all there is.
+if ([string]::IsNullOrWhiteSpace($Source)) { $Source = $PSScriptRoot }
 if ([string]::IsNullOrWhiteSpace($Source)) { $Source = (Get-Location).ProviderPath }
 if ([string]::IsNullOrWhiteSpace($Destination)) {
     Die "no -Destination and no LOCALAPPDATA to fall back on"
@@ -77,6 +87,7 @@ function Install-Codenotch {
         Warn "not Windows 11; Mica and rounded corners will be skipped"
     }
     Ok "$env:PROCESSOR_ARCHITECTURE, build $build"
+    Ok "installing from $Source"
     $srcExe = Join-Path $Source 'Codenotch.exe'
     if (-not (Test-Path -LiteralPath $srcExe)) {
         Die "Codenotch.exe not found in $Source"
@@ -96,9 +107,14 @@ function Install-Codenotch {
         Ok "already in place"
     } else {
         Copy-Item -LiteralPath $srcExe -Destination $Destination -Force
-        $readme = Join-Path $Source 'README.md'
-        if (Test-Path -LiteralPath $readme) {
-            Copy-Item -LiteralPath $readme -Destination $Destination -Force
+        # The two installer scripts travel with the exe so that uninstalling later
+        # needs nothing but the install directory -- the release zip, or the temp
+        # directory get.ps1 unpacked into, is usually long gone by then.
+        foreach ($extra in @('README.md', 'install.ps1', 'install.cmd')) {
+            $from = Join-Path $Source $extra
+            if (Test-Path -LiteralPath $from) {
+                Copy-Item -LiteralPath $from -Destination $Destination -Force
+            }
         }
         Ok "$Exe"
     }
@@ -154,11 +170,19 @@ function Install-Codenotch {
 
     @"
 
-  Done. Codenotch is running in the notification area.
+  Done. Codenotch is installed at
+    $Exe
+
+  It draws a dial in the notification area, next to the clock. Windows hides
+  new tray icons at first: click the ^ arrow beside the clock to find it, and
+  drag it out of that overflow to keep it on the taskbar. Left-click the dial
+  for the flyout, right-click it for the menu.
 
   Settings live at $SettingsPath and are also editable from the tray menu's
-  Settings item. To uninstall later:
-    .\install.ps1 -Uninstall
+  Settings item. To uninstall later, from that install directory:
+    .\install.cmd -Uninstall
+  or  powershell -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
+  Add -Purge to either one to delete settings.json as well.
 "@ | Write-Host
 }
 

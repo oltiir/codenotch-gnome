@@ -26,38 +26,45 @@ notch:   ╭──────╮   flush to the right edge, vertically centred
 Everything is percent **used**, the way claude.ai reports it. Green under
 70%, yellow from 70%, red from 90%.
 
-Unlike the GNOME, COSMIC and waybar ports, this one talks to Claude and Codex
-directly rather than reading a local `codexbar serve` process: CodexBar is
-Swift and ships no Windows binary. See [Privacy](#privacy) below for what
-that means in practice.
+## Install
 
-## Install the prebuilt exe
-
-Paste this into PowerShell. It downloads the latest
-[release](https://github.com/oltiir/codenotch-gnome/releases/latest) itself,
-so there's nothing to fetch by hand:
+In any PowerShell window:
 
 ```powershell
-cd ~\Downloads
-irm https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip -OutFile codenotch.zip
-Expand-Archive codenotch.zip -DestinationPath codenotch -Force
-.\codenotch\install.ps1
+irm https://raw.githubusercontent.com/oltiir/codenotch-gnome/main/windows/get.ps1 | iex
 ```
 
-The install is per-user: no admin, and no .NET needed on the machine. It
-starts Codenotch straight away and again at every login, and it shows up as a
-dial in the notification area beside the clock. Claude Code and/or Codex have
-to be signed in on this machine already — that's where the numbers come from.
+One line, and nothing to set up first: a pipeline into `iex` is not a script
+file, so the execution policy — `Restricted` on a stock Windows 11 — does not
+apply to it. `get.ps1` works out whether this machine is x64 or ARM64,
+downloads that zip from the latest
+[release](https://github.com/oltiir/codenotch-gnome/releases/latest), checks it
+against the published `.sha256`, unpacks it into a temp directory, runs the
+`install.ps1` inside through `powershell -ExecutionPolicy Bypass`, and deletes
+the temp directory again.
 
-The exe is unsigned, which shows up twice. If PowerShell refuses to run the
-script, use `powershell -ExecutionPolicy Bypass -File .\codenotch\install.ps1`
-(or `Set-ExecutionPolicy -Scope Process Bypass` for the current shell). If
-SmartScreen says **Windows protected your PC**, choose *More info → Run
-anyway*; the `.sha256` next to the zip on the release page is how to check the
-download before you do.
+The install is per-user: no admin, and no .NET needed on the machine. It puts
+`Codenotch.exe` in `%LOCALAPPDATA%\Programs\Codenotch` — with copies of
+`install.ps1` and `install.cmd` beside it, so uninstalling later needs nothing
+you have to keep — adds a Start menu shortcut and an HKCU `Run` key, and starts
+it. It shows up as a dial in the notification area beside the clock; Windows
+hides new tray icons behind the `^` arrow until you drag them out. Claude Code
+and/or Codex have to be signed in on this machine already — that's where the
+numbers come from.
 
-On an ARM64 laptop use `codenotch-windows-arm64.zip` instead — same two
-commands, same install.
+Prefer to see what you run? Download `codenotch-windows-x64.zip` (ARM64
+laptops: `codenotch-windows-arm64.zip`) from the
+[release page](https://github.com/oltiir/codenotch-gnome/releases/latest),
+extract it, and double-click **`install.cmd`** — it runs the same `install.ps1`
+with `-ExecutionPolicy Bypass` and waits for a keypress at the end, so the
+window does not vanish before you have read it. The exe is portable, too:
+running `Codenotch.exe` out of the extracted folder tries the app with no
+install, no shortcut and no autostart.
+
+The exe is unsigned, so SmartScreen may say **Windows protected your PC** the
+first time it runs: choose *More info → Run anyway*. The `.sha256` next to the
+zip on the release page is how to check the download before that; the one-liner
+checks it for you.
 
 ### Verifying the download by hand
 
@@ -66,11 +73,13 @@ cd ~\Downloads
 irm https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip -OutFile codenotch-windows-x64.zip
 irm https://github.com/oltiir/codenotch-gnome/releases/latest/download/codenotch-windows-x64.zip.sha256 -OutFile codenotch-windows-x64.zip.sha256
 (Get-FileHash codenotch-windows-x64.zip -Algorithm SHA256).Hash.ToLower() -eq (Get-Content codenotch-windows-x64.zip.sha256).Split(' ')[0]
-Expand-Archive codenotch-windows-x64.zip -DestinationPath codenotch-windows-x64
-.\codenotch-windows-x64\install.ps1
+Expand-Archive codenotch-windows-x64.zip -DestinationPath codenotch
+.\codenotch\install.cmd
 ```
 
-`True` from the third line means the zip is the one CI built.
+`True` from the fourth line means the zip is the one CI built. That is the same
+comparison `get.ps1` makes; the published file is the hash, two spaces and the
+file name, with no trailing newline.
 
 ## Build from source
 
@@ -79,7 +88,7 @@ Needs the .NET 10 SDK.
 ```powershell
 dotnet test windows\tests\Codenotch.Core.Tests
 dotnet publish windows\src\Codenotch.App -c Release -r win-x64
-.\windows\install.ps1 -Source windows\src\Codenotch.App\bin\Release\net10.0-windows\win-x64\publish
+.\windows\install.cmd -Source windows\src\Codenotch.App\bin\Release\net10.0-windows\win-x64\publish
 ```
 
 ## Did it work?
@@ -138,8 +147,17 @@ it then reads a local `codexbar serve` instead, same as the other ports.
 
 ## Uninstall
 
+From `%LOCALAPPDATA%\Programs\Codenotch` (where the installer left both
+scripts), or from the extracted zip:
+
 ```powershell
-.\install.ps1 -Uninstall
+.\install.cmd -Uninstall
+```
+
+Or, to see the script rather than the wrapper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
 ```
 
 Or by hand: remove the `Codenotch` value from
@@ -154,6 +172,19 @@ delete `%LOCALAPPDATA%\Programs\Codenotch` and `%LOCALAPPDATA%\Codenotch`.
 on first run: *More info → Run anyway*, or `Unblock-File .\Codenotch.exe`
 (which `install.ps1` already does). Verify the `.sha256` from the release
 first.
+
+**"install.ps1 cannot be loaded because running scripts is disabled on this
+system"** — Windows 11's execution policy is `Restricted` out of the box, so
+a bare `.\install.ps1` is exactly the thing that fails. Both documented paths
+avoid it: `irm ... | iex` is a pipeline rather than a script file, and
+`install.cmd` starts `powershell.exe -ExecutionPolicy Bypass`. To run the
+script directly anyway, do the same by hand:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+There is no need to change the machine's policy with `Set-ExecutionPolicy`.
 
 **"Claude token expired; run `claude` once to refresh"** — the app
 deliberately does not rotate your refresh token (that would race Claude
@@ -189,6 +220,8 @@ windows/
   Codenotch.sln                 Two projects + test project
   Directory.Build.props         Shared build settings
   install.ps1                   Per-user install/uninstall
+  install.cmd                   Double-clickable wrapper around install.ps1
+  get.ps1                       The "irm ... | iex" bootstrap: download, verify, install
   src/Codenotch.Core/           Models, parsing, providers, presentation, pace, settings
   src/Codenotch.App/            WPF: tray, flyout, notch, settings window, Win32 interop
   tests/Codenotch.Core.Tests/   xunit tests + fixtures
