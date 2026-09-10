@@ -100,9 +100,15 @@ jobs:
               else { Write-Host "  FAIL $What"; $script:failures += $What }
           }
 
-          $installer = (Resolve-Path install.ps1).Path
-          $wrapper   = (Resolve-Path install.cmd).Path
-          $source    = (Resolve-Path publish/win-x64).Path
+          # Stage a directory shaped like the release zip -- exe plus the three
+          # scripts and the README -- and install from there, with no -Source, so
+          # the $PSScriptRoot default and %~dp0 are what gets exercised.
+          $stage = Join-Path (Get-Location).Path 'smoke-stage'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item publish/win-x64/Codenotch.exe $stage -Force
+          Copy-Item install.ps1, install.cmd, get.ps1, README.md $stage -Force
+          $installer = Join-Path $stage 'install.ps1'
+          $wrapper   = Join-Path $stage 'install.cmd'
           $programs  = Join-Path $env:LOCALAPPDATA 'Programs\Codenotch'
           $exe       = Join-Path $programs 'Codenotch.exe'
           $settings  = Join-Path $env:LOCALAPPDATA 'Codenotch'
@@ -113,7 +119,7 @@ jobs:
           Push-Location $env:TEMP
           try {
               & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer `
-                  -Source $source -NoRunKey -NoStart
+                  -NoRunKey -NoStart
               $code = $LASTEXITCODE
           } finally {
               Pop-Location
@@ -152,7 +158,7 @@ jobs:
           Check (-not (Test-Path -LiteralPath $settings)) "$settings is gone"
 
           Write-Host '--- install.cmd wrapper (install, then uninstall)'
-          & cmd.exe /c $wrapper -Source $source -NoStart -NoRunKey
+          & cmd.exe /c $wrapper -NoStart -NoRunKey
           Check ($LASTEXITCODE -eq 0) "install.cmd exited 0 (got $LASTEXITCODE)"
           Check (Test-Path -LiteralPath $exe) 'install.cmd installed the exe'
           & cmd.exe /c $wrapper -Uninstall -Purge
@@ -165,6 +171,7 @@ jobs:
               $failures | ForEach-Object { Write-Host " - $_" }
               exit 1
           }
+          Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
           Write-Host ''
           Write-Host 'smoke test passed'
 
