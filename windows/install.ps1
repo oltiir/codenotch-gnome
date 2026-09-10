@@ -96,9 +96,14 @@ function Install-Codenotch {
         Ok "already in place"
     } else {
         Copy-Item -LiteralPath $srcExe -Destination $Destination -Force
-        $readme = Join-Path $Source 'README.md'
-        if (Test-Path -LiteralPath $readme) {
-            Copy-Item -LiteralPath $readme -Destination $Destination -Force
+        # The two installer scripts travel with the exe so that uninstalling later
+        # needs nothing but the install directory -- the release zip, or the temp
+        # directory get.ps1 unpacked into, is usually long gone by then.
+        foreach ($extra in @('README.md', 'install.ps1', 'install.cmd')) {
+            $from = Join-Path $Source $extra
+            if (Test-Path -LiteralPath $from) {
+                Copy-Item -LiteralPath $from -Destination $Destination -Force
+            }
         }
         Ok "$Exe"
     }
@@ -154,11 +159,19 @@ function Install-Codenotch {
 
     @"
 
-  Done. Codenotch is running in the notification area.
+  Done. Codenotch is installed at
+    $Exe
+
+  It draws a dial in the notification area, next to the clock. Windows hides
+  new tray icons at first: click the ^ arrow beside the clock to find it, and
+  drag it out of that overflow to keep it on the taskbar. Left-click the dial
+  for the flyout, right-click it for the menu.
 
   Settings live at $SettingsPath and are also editable from the tray menu's
-  Settings item. To uninstall later:
-    .\install.ps1 -Uninstall
+  Settings item. To uninstall later, from that install directory:
+    .\install.cmd -Uninstall
+  or  powershell -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
+  Add -Purge to either one to delete settings.json as well.
 "@ | Write-Host
 }
 

@@ -20,7 +20,7 @@ jobs:
       run:
         working-directory: cosmic
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: System libraries libcosmic links against
         run: |
@@ -59,7 +59,7 @@ jobs:
           echo "glibc needed: $(objdump -T target/release/codenotch-cosmic | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -1)"
           echo "name=$ASSET-$TAG" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.pkg.outputs.name }}
           path: |

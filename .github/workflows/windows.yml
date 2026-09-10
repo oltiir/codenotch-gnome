@@ -1,6 +1,8 @@
 # Builds the Windows 11 tray app on windows-latest. Single-file, self-contained,
-# untrimmed (WPF is not trim-safe), so it runs with no .NET install. On a tag it
-# attaches one zip per architecture to the release: exe + install.ps1 + README.
+# untrimmed (WPF is not trim-safe), so it runs with no .NET install. Before
+# packaging, the x64 leg installs what it just built on the runner, launches it
+# and uninstalls it again -- see "Smoke test". On a tag it attaches one zip per
+# architecture to the release: exe + install.ps1 + install.cmd + get.ps1 + README.
 name: windows-app
 
 on:
@@ -29,9 +31,9 @@ jobs:
           - rid: win-arm64
             asset: codenotch-windows-arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -45,11 +47,126 @@ jobs:
         if: matrix.rid == 'win-x64'      # the tests are RID-independent, run them once
         run: dotnet test tests/Codenotch.Core.Tests --configuration Release --verbosity minimal
 
+      # get.ps1 cannot be run here -- it installs the latest release, not this
+      # build -- so at least prove Windows PowerShell 5.1 can parse both scripts.
+      # 5.1 is what a stock Windows 11 has, and it has no ?: and no ?? operators.
+      - name: Parse the PowerShell with 5.1
+        if: matrix.rid == 'win-x64'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $checker = @'
+          $bad = 0
+          foreach ($file in @('install.ps1', 'get.ps1')) {
+              $errors = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile(
+                  (Resolve-Path $file).Path, [ref]$null, [ref]$errors)
+              if ($errors -and $errors.Count -gt 0) {
+                  $bad = 1
+                  Write-Host "FAIL $file"
+                  $errors | ForEach-Object { Write-Host "  $($_.Extent.StartLineNumber): $($_.Message)" }
+              } else {
+                  Write-Host "  ok  $file parses under $($PSVersionTable.PSVersion)"
+              }
+          }
+          exit $bad
+          '@
+          $checker | Set-Content parse-check.ps1 -Encoding ascii
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File parse-check.ps1
+          $code = $LASTEXITCODE
+          Remove-Item parse-check.ps1 -Force
+          if ($code -ne 0) { exit 1 }
+
       - name: Publish
         run: >
           dotnet publish src/Codenotch.App --configuration Release --runtime ${{ matrix.rid }}
           --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false
           --output publish/${{ matrix.rid }}
+
+      # Installs the exe the step above built, starts it, and takes it back off.
+      # x64 only: an arm64 exe cannot run on this runner. The installer is driven
+      # through powershell.exe (5.1) from a different working directory, which is
+      # how a user reaches it -- get.ps1 and install.cmd both call it that way.
+      # A GitHub Windows runner has a desktop, so a WPF tray app does start here;
+      # if that ever stops being true, drop the sleep to 5 s and say so, rather
+      # than dropping the step.
+      - name: Smoke test the install on the runner
+        if: matrix.rid == 'win-x64'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $failures = @()
+          function Check {
+              param($Ok, $What)
+              if ($Ok) { Write-Host "  ok   $What" }
+              else { Write-Host "  FAIL $What"; $script:failures += $What }
+          }
+
+          $installer = (Resolve-Path install.ps1).Path
+          $wrapper   = (Resolve-Path install.cmd).Path
+          $source    = (Resolve-Path publish/win-x64).Path
+          $programs  = Join-Path $env:LOCALAPPDATA 'Programs\Codenotch'
+          $exe       = Join-Path $programs 'Codenotch.exe'
+          $settings  = Join-Path $env:LOCALAPPDATA 'Codenotch'
+          $errorLog  = Join-Path $settings 'error.log'
+          if (Test-Path -LiteralPath $errorLog) { Remove-Item -LiteralPath $errorLog -Force }
+
+          Write-Host '--- install.ps1 -File, from another working directory'
+          Push-Location $env:TEMP
+          try {
+              & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer `
+                  -Source $source -NoRunKey -NoStart
+              $code = $LASTEXITCODE
+          } finally {
+              Pop-Location
+          }
+          Check ($code -eq 0) "install.ps1 exited 0 (got $code)"
+          Check (Test-Path -LiteralPath $exe) "$exe exists"
+          Check (Test-Path -LiteralPath (Join-Path $programs 'install.cmd')) 'install.cmd installed beside the exe'
+
+          Write-Host '--- launching the tray app'
+          $proc = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 20
+          $alive = @(Get-Process -Name Codenotch -ErrorAction SilentlyContinue)
+          Check ($alive.Count -gt 0) "Codenotch (pid $($proc.Id)) still running after 20 s"
+          if (Test-Path -LiteralPath $errorLog) {
+              $log = Get-Content -LiteralPath $errorLog -Raw
+              if ([string]::IsNullOrWhiteSpace($log)) {
+                  Check $true 'error.log is empty'
+              } else {
+                  Write-Host '--- error.log'
+                  Write-Host $log
+                  Check $false 'error.log is empty'
+              }
+          } else {
+              Check $true 'error.log was never written'
+          }
+          Get-Process -Name Codenotch -ErrorAction SilentlyContinue |
+              Stop-Process -Force -ErrorAction SilentlyContinue
+          # The exe stays locked for a moment after the kill, and the uninstall
+          # below only waits for processes it stopped itself.
+          Start-Sleep -Seconds 3
+
+          Write-Host '--- install.ps1 -Uninstall -Purge'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -Uninstall -Purge
+          Check ($LASTEXITCODE -eq 0) "uninstall exited 0 (got $LASTEXITCODE)"
+          Check (-not (Test-Path -LiteralPath $programs)) "$programs is gone"
+          Check (-not (Test-Path -LiteralPath $settings)) "$settings is gone"
+
+          Write-Host '--- install.cmd wrapper (install, then uninstall)'
+          & cmd.exe /c $wrapper -Source $source -NoStart -NoRunKey
+          Check ($LASTEXITCODE -eq 0) "install.cmd exited 0 (got $LASTEXITCODE)"
+          Check (Test-Path -LiteralPath $exe) 'install.cmd installed the exe'
+          & cmd.exe /c $wrapper -Uninstall -Purge
+          Check ($LASTEXITCODE -eq 0) "install.cmd -Uninstall exited 0 (got $LASTEXITCODE)"
+          Check (-not (Test-Path -LiteralPath $programs)) 'install.cmd -Uninstall removed the exe directory'
+
+          if ($failures.Count -gt 0) {
+              Write-Host ''
+              Write-Host "smoke test failed: $($failures.Count) assertion(s)"
+              $failures | ForEach-Object { Write-Host " - $_" }
+              exit 1
+          }
+          Write-Host ''
+          Write-Host 'smoke test passed'
 
       - name: Package
         id: pkg
@@ -60,14 +177,15 @@ jobs:
           $asset = '${{ matrix.asset }}'            # stable name: releases/latest/download/ works
           New-Item -ItemType Directory -Force dist/$asset | Out-Null
           Copy-Item publish/${{ matrix.rid }}/Codenotch.exe dist/$asset/
-          Copy-Item install.ps1, README.md dist/$asset/
-          # -Path with a trailing \* puts exe + install.ps1 + README at the zip root.
+          Copy-Item install.ps1, install.cmd, get.ps1, README.md dist/$asset/
+          # -Path with a trailing \* puts the exe, both installers, get.ps1 and the
+          # README at the zip root, so extract-and-double-click finds install.cmd.
           Compress-Archive -Path dist/$asset/* -DestinationPath dist/$asset.zip -Force
           (Get-FileHash dist/$asset.zip -Algorithm SHA256).Hash.ToLower() + "  $asset.zip" |
             Set-Content dist/$asset.zip.sha256 -NoNewline -Encoding utf8
           "name=$asset-$tag" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.pkg.outputs.name }}
           path: |                        # upload-artifact paths are repo-relative
