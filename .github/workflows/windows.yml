@@ -101,8 +101,8 @@ jobs:
           }
 
           # Stage a directory shaped like the release zip -- exe plus the three
-          # scripts and the README -- and install from there, with no -Source, so
-          # the $PSScriptRoot default and %~dp0 are what gets exercised.
+          # scripts and the README -- and install from there with no -Source, so
+          # the installer's own $PSScriptRoot handling and %~dp0 get exercised.
           $stage = Join-Path (Get-Location).Path 'smoke-stage'
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item publish/win-x64/Codenotch.exe $stage -Force
@@ -114,6 +114,20 @@ jobs:
           $settings  = Join-Path $env:LOCALAPPDATA 'Codenotch'
           $errorLog  = Join-Path $settings 'error.log'
           if (Test-Path -LiteralPath $errorLog) { Remove-Item -LiteralPath $errorLog -Force }
+
+          # Why install.ps1 reads $PSScriptRoot in its body and not in a parameter
+          # default. Printed, not asserted: it is a fact about the shell.
+          $probe = Join-Path $stage 'probe.ps1'
+          $probeBody = @'
+          param([string]$Source = $PSScriptRoot)
+          Write-Host "  parameter default -Source = '$Source'"
+          Write-Host "  script body PSScriptRoot  = '$PSScriptRoot'"
+          '@
+          $probeBody | Set-Content -LiteralPath $probe -Encoding ascii
+          Write-Host '--- what 5.1 hands a -File script'
+          Push-Location $env:TEMP
+          try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $probe } finally { Pop-Location }
+          Remove-Item -LiteralPath $probe -Force
 
           Write-Host '--- install.ps1 -File, from another working directory'
           Push-Location $env:TEMP

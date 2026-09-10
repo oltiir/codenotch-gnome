@@ -15,7 +15,7 @@ param(
     [switch]$Purge,
     [switch]$NoStart,
     [switch]$NoRunKey,
-    [string]$Source = $PSScriptRoot,
+    [string]$Source,
     [string]$Destination = "$env:LOCALAPPDATA\Programs\Codenotch"
 )
 
@@ -27,8 +27,14 @@ function Ok   { param($m) Write-Host "  ok " -ForegroundColor Green -NoNewline; 
 function Warn { param($m) Write-Host "  !  " -ForegroundColor Yellow -NoNewline; Write-Host $m }
 function Die  { param($m) Write-Host "x  " -ForegroundColor Red -NoNewline; Write-Host $m; exit 1 }
 
-# $PSScriptRoot is empty when the script is piped into powershell rather than run
-# as a file; Join-Path would then throw on an empty -Path.
+# Without -Source, install from the directory holding this script, which is the
+# extracted zip. $PSScriptRoot has to be read here, in the script body: as the
+# parameter's default value it came back empty under Windows PowerShell 5.1 when
+# the script was started with "powershell.exe -File ...", and $Source then fell
+# through to the caller's working directory, which is not where the exe is. It is
+# genuinely empty for a script piped into powershell instead of run as a file,
+# and then the working directory is all there is.
+if ([string]::IsNullOrWhiteSpace($Source)) { $Source = $PSScriptRoot }
 if ([string]::IsNullOrWhiteSpace($Source)) { $Source = (Get-Location).ProviderPath }
 if ([string]::IsNullOrWhiteSpace($Destination)) {
     Die "no -Destination and no LOCALAPPDATA to fall back on"
@@ -77,6 +83,7 @@ function Install-Codenotch {
         Warn "not Windows 11; Mica and rounded corners will be skipped"
     }
     Ok "$env:PROCESSOR_ARCHITECTURE, build $build"
+    Ok "installing from $Source"
     $srcExe = Join-Path $Source 'Codenotch.exe'
     if (-not (Test-Path -LiteralPath $srcExe)) {
         Die "Codenotch.exe not found in $Source"
