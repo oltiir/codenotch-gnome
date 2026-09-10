@@ -1,0 +1,14 @@
+{
+  "account_id": "acct_2f9c1d40",
+  "plan_type": "plus",
+  "rate_limit": {
+    "primary_window":   { "used_percent": 21, "reset_at": 1788811800, "limit_window_seconds": 18000 },
+    "secondary_window": { "used_percent": 12, "reset_at": 1788840000, "limit_window_seconds": 604800 }
+  },
+  "additional_rate_limits": [
+    { "limit_name": "GPT-5.3-Codex-Spark", "metered_feature": "codex_spark",
+      "rate_limit": { "primary_window": { "used_percent": 4, "reset_at": 1788811800, "limit_window_seconds": 18000 },
+                      "secondary_window": null } }
+  ],
+  "credits": { "has_credits": false, "unlimited": false, "balance": 0 }
+}

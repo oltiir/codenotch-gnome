@@ -1,0 +1,36 @@
+<Window x:Class="Codenotch.App.FlyoutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Codenotch"
+        MinWidth="380"
+        MaxWidth="560"
+        SizeToContent="WidthAndHeight"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        AllowsTransparency="False"
+        Background="Transparent"
+        Icon="Assets/Codenotch.ico"
+        FocusManager.IsFocusScope="True">
+
+  <!-- Acrylic comes from DWM (see SourceInitialized); Background stays transparent
+       so the backdrop shows through, and falls back to a solid brush when the
+       attribute is not supported. -->
+  <Grid Margin="16,14,16,12">
+    <StackPanel>
+      <StackPanel x:Name="Body" />
+      <Grid x:Name="Footer" Margin="0,14,0,0">
+        <TextBlock x:Name="UpdatedText"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Left"
+                   FontSize="11" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="RefreshButton" Content="Refresh" Padding="10,3" MinWidth="72" />
+          <Button x:Name="SettingsButton" Content="&#x2699;" Margin="8,0,0,0" Padding="8,3" MinWidth="34"
+                  ToolTip="Settings" />
+        </StackPanel>
+      </Grid>
+    </StackPanel>
+  </Grid>
+</Window>

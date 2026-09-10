@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <!-- Off on purpose: with UseWPF and UseWindowsForms both on, the implicit set
+         pulls in System.Drawing and System.Windows.Forms, so a bare `Application`,
+         `Brushes`, `Point`, `Color` or `Size` silently means the WinForms/GDI type.
+         Every file here spells out its usings and aliases the WinForms side. -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <ApplicationIcon>Assets\Codenotch.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>Codenotch</AssemblyName>
+    <RootNamespace>Codenotch.App</RootNamespace>
+    <!-- ThemeMode is [Experimental] in .NET 10; we want the Fluent system theme anyway. -->
+    <!-- WPF0001: ThemeMode is [Experimental] in .NET 10; the Fluent system theme is the point.
+         WFO0003: WinForms wants DPI mode set via API, but WPF needs PerMonitorV2 declared in
+         the manifest before the first window exists, so the manifest stays authoritative. -->
+    <NoWarn>$(NoWarn);WPF0001;WFO0003</NoWarn>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Publish shape. Gated on a RuntimeIdentifier so a plain `dotnet build` stays
+       framework-dependent and RID-less: that is what lets the Linux compile check
+       (plan F) work at all, since there is no WindowsDesktop runtime pack for
+       linux-x64. CI publishes with -r win-x64 / -r win-arm64, which turns these on. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- WPF is not trim-safe. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
+  <!-- EnableWindowsTargeting is deliberately NOT here: it is passed on the command line
+       for the Linux compile check (see the plan, section F). -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Codenotch.Core\Codenotch.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ApplicationIcon embeds a Win32 icon for Explorer and the taskbar; Window.Icon
+         needs the same file reachable as a pack:// resource, so it is included twice. -->
+    <Resource Include="Assets\Codenotch.ico" />
+  </ItemGroup>
+
+</Project>

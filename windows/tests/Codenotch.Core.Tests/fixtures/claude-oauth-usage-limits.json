@@ -1,0 +1,14 @@
+{
+  "five_hour": { "utilization": 28, "resets_at": "2026-09-10T15:30:00Z" },
+  "seven_day": { "utilization": 24, "resets_at": "2026-09-15T04:00:00Z" },
+  "seven_day_opus": { "utilization": 44, "resets_at": "2026-09-15T04:00:00Z" },
+  "seven_day_sonnet": null,
+  "limits": [
+    { "kind": "weekly_scoped", "group": "weekly", "percent": 44, "resets_at": "2026-09-15T04:00:00Z",
+      "scope": { "model": { "id": "claude-fable-4", "display_name": "Fable" } }, "is_active": true },
+    { "kind": "weekly_scoped", "group": "weekly", "percent": 24, "resets_at": "2026-09-15T04:00:00Z",
+      "scope": { "model": { "id": "all", "display_name": "All models" } }, "is_active": true },
+    { "kind": "weekly_scoped", "group": "weekly", "percent": 44, "resets_at": "2026-09-15T04:00:00Z",
+      "scope": { "model": { "id": "claude-fable-4", "display_name": "Fable" } }, "is_active": false }
+  ]
+}
