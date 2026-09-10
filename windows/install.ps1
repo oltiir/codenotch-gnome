@@ -28,12 +28,16 @@ function Warn { param($m) Write-Host "  !  " -ForegroundColor Yellow -NoNewline;
 function Die  { param($m) Write-Host "x  " -ForegroundColor Red -NoNewline; Write-Host $m; exit 1 }
 
 # Without -Source, install from the directory holding this script, which is the
-# extracted zip. $PSScriptRoot has to be read here, in the script body: as the
-# parameter's default value it came back empty under Windows PowerShell 5.1 when
-# the script was started with "powershell.exe -File ...", and $Source then fell
-# through to the caller's working directory, which is not where the exe is. It is
-# genuinely empty for a script piped into powershell instead of run as a file,
-# and then the working directory is all there is.
+# extracted zip. $PSScriptRoot has to be read here, in the body, and not as the
+# default value of the parameter: [CmdletBinding()] above makes this an advanced
+# script, and an advanced script evaluates its parameter defaults in the caller's
+# scope, where $PSScriptRoot is empty. It bound $Source to "" that way, the
+# fall-back below then pointed at the caller's working directory, and the install
+# failed with "Codenotch.exe not found" -- get.ps1 and install.cmd both run this
+# script with -File and no -Source, so that was the common path. (The CI smoke
+# test prints both forms.) $PSScriptRoot is genuinely empty for a script piped
+# into powershell rather than run as a file, and then the working directory is
+# all there is.
 if ([string]::IsNullOrWhiteSpace($Source)) { $Source = $PSScriptRoot }
 if ([string]::IsNullOrWhiteSpace($Source)) { $Source = (Get-Location).ProviderPath }
 if ([string]::IsNullOrWhiteSpace($Destination)) {
